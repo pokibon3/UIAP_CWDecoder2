@@ -375,15 +375,39 @@ static int check_sw()
 int cwd_setup()
 {
 	if (first_flg == 1) {
-		const uint8_t title_scale = 3;
-		const uint8_t title_char_w = (uint8_t)((8 - 2) * title_scale);
-		const uint8_t title_char_h = (uint8_t)(8 * title_scale);
 		const uint8_t title_gap = 4;
-		const uint16_t title_block_h = (uint16_t)(title_char_h * 3 + title_gap * 2);
-		const uint16_t title_top = (TFT_HEIGHT > title_block_h) ? (uint16_t)((TFT_HEIGHT - title_block_h) / 2) : 0;
-		const uint16_t title_y1 = title_top;
-		const uint16_t title_y2 = title_top + title_char_h + title_gap;
-		const uint16_t title_y3 = title_top + (title_char_h + title_gap) * 2;
+		uint8_t max_title_len = (uint8_t)strlen(title1);
+		uint8_t title_scale_w;
+		uint8_t title_scale_h;
+		uint8_t title_scale;
+		uint8_t title_char_w;
+		uint8_t title_char_h;
+		uint16_t title_block_h;
+		uint16_t title_top;
+		uint16_t title_y1;
+		uint16_t title_y2;
+		uint16_t title_y3;
+
+		if ((uint8_t)strlen(title2) > max_title_len) max_title_len = (uint8_t)strlen(title2);
+		if ((uint8_t)strlen(title3) > max_title_len) max_title_len = (uint8_t)strlen(title3);
+		if (max_title_len == 0) max_title_len = 1;
+
+		title_scale_w = (uint8_t)(TFT_WIDTH / (max_title_len * (8 - 2)));
+		if (title_scale_w < 1) title_scale_w = 1;
+		if (title_scale_w > 3) title_scale_w = 3;
+
+		title_scale_h = (uint8_t)((TFT_HEIGHT - (title_gap * 2)) / (8 * 3));
+		if (title_scale_h < 1) title_scale_h = 1;
+		if (title_scale_h > 3) title_scale_h = 3;
+
+		title_scale = (title_scale_w < title_scale_h) ? title_scale_w : title_scale_h;
+		title_char_w = (uint8_t)((8 - 2) * title_scale);
+		title_char_h = (uint8_t)(8 * title_scale);
+		title_block_h = (uint16_t)(title_char_h * 3 + title_gap * 2);
+		title_top = (TFT_HEIGHT > title_block_h) ? (uint16_t)((TFT_HEIGHT - title_block_h) / 2) : 0;
+		title_y1 = title_top;
+		title_y2 = title_top + title_char_h + title_gap;
+		title_y3 = title_top + (title_char_h + title_gap) * 2;
 
 		first_flg = 0;
 		tft_fill_rect(0, 0, TFT_WIDTH, TFT_HEIGHT, BLACK);
@@ -530,10 +554,10 @@ TEST_LOW
 		if (realstate != realstatebefore){
 			laststarttime = millis();
 		}
-		//{
-		//	uint32_t unit = (hightimesavg > 0) ? hightimesavg : highduration;
-		//	nbtime = compute_nbtime(unit);
-		//}
+		{
+			uint32_t unit = (hightimesavg > 0) ? hightimesavg : highduration;
+			nbtime = compute_nbtime(unit);
+		}
 		if ((millis()-laststarttime)> nbtime) {
 			if (realstate != filteredstate) {
 				filteredstate = realstate;
