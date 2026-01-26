@@ -49,3 +49,7 @@ extern uint16_t sampling_period_us;
 extern "C" int mini_snprintf(char* buffer, unsigned int buffer_len, const char *fmt, ...);
 extern int GPIO_setup();
 extern int check_input();
+
+extern void tim1_pwm_init(void);
+
+extern "C" void TIM1_UP_IRQHandler(void) __attribute__((interrupt));

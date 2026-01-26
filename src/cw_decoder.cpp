@@ -51,7 +51,7 @@
 #define TEST_LOW			GPIO_digitalWrite(TEST_PIN, low);
 
 #define GOERTZEL_SAMPLES 48
-#define GOERTZEL_SAMPLING_FREQUENCY 8000
+#define GOERTZEL_SAMPLING_FREQUENCY 8192
 #if (TFT_WIDTH >= 240)
 #define TEXT_SCALE 3
 #define FONT_WIDTH 24
@@ -92,11 +92,11 @@ static uint16_t wpm;
 static char		sw = MODE_US;
 static int16_t 	speed = 0;
 
-static const char *tone[] = {
-	" 700",
-	" 800",
-	"1000"
-};
+//static const char *tone[] = {
+//	" 700",
+//	" 800",
+//	"1000"
+//};
 static const uint16_t tone_hz[] = { 700, 800, 1000 };
 static char info_last_buf[24];
 static uint8_t info_sep_drawn = 0;
@@ -121,7 +121,68 @@ static uint8_t* const linebufs[] = { line0, line1, line2 };
 #endif
 uint8_t lastChar = 0;
 
-int16_t 	morseData[GOERTZEL_SAMPLES];
+extern uint8_t shared_buf[BUFSIZE];
+static volatile uint32_t morseSum[2];
+static volatile uint16_t morseWriteIndex = 0;
+static volatile uint8_t morseWriteBuf = 0;
+static volatile uint8_t morseReady[2] = { 0, 0 };
+
+static inline int16_t *get_morse_buf(uint8_t idx)
+{
+	return (int16_t *)shared_buf + (idx * GOERTZEL_SAMPLES);
+}
+
+static void reset_morse_buffers(void)
+{
+	morseSum[0] = 0;
+	morseSum[1] = 0;
+	morseWriteIndex = 0;
+	morseWriteBuf = 0;
+	morseReady[0] = 0;
+	morseReady[1] = 0;
+}
+
+extern "C" void TIM1_UP_IRQHandler(void) __attribute__((interrupt));
+extern "C" void TIM1_UP_IRQHandler(void)
+{
+	if (TIM1->INTFR & TIM_IT_Update) {
+		TIM1->INTFR = (uint16_t)~TIM_IT_Update;
+	}
+
+	if (morseReady[morseWriteBuf]) {
+		uint8_t next = morseWriteBuf ^ 1;
+		if (!morseReady[next]) {
+			morseWriteBuf = next;
+			morseWriteIndex = 0;
+			morseSum[morseWriteBuf] = 0;
+		} else {
+			return;
+		}
+	}
+
+	if (morseWriteIndex >= GOERTZEL_SAMPLES) {
+		morseWriteIndex = 0;
+		morseSum[morseWriteBuf] = 0;
+	}
+
+	{
+		uint16_t sample = (uint16_t)(GPIO_analogRead(GPIO_Ain0_A2) >> 1);
+		get_morse_buf(morseWriteBuf)[morseWriteIndex] = (int16_t)sample;
+		morseSum[morseWriteBuf] += sample;
+		morseWriteIndex++;
+		if (morseWriteIndex >= GOERTZEL_SAMPLES) {
+			morseReady[morseWriteBuf] = 1;
+			uint8_t next = morseWriteBuf ^ 1;
+			if (!morseReady[next]) {
+				morseWriteBuf = next;
+				morseWriteIndex = 0;
+				morseSum[morseWriteBuf] = 0;
+			} else {
+				morseWriteIndex = GOERTZEL_SAMPLES;
+			}
+		}
+	}
+}
 
 //==================================================================
 // gap を 1単位 hightimesavg の相対値で分類
@@ -427,6 +488,8 @@ int cwd_setup()
 
 	initGoertzel(speed);
 	sampling_period_us = 900000 / GOERTZEL_SAMPLING_FREQUENCY;
+	reset_morse_buffers();
+	tim1_pwm_init();
 #if defined(TFT_ST7739)
 	current_line = 0;
 	lcdindex = 0;
@@ -482,7 +545,7 @@ static int decodeAscii(int16_t asciinumber)
 //==================================================================
 //	cwDecoder : デコーダ本体
 //==================================================================
-int cwDecoder(int16_t *morseData)
+int cwDecoder(void)
 {
 	int32_t magnitude;
 	uint8_t draw_div = 0;
@@ -495,23 +558,19 @@ int cwDecoder(int16_t *morseData)
 	info_last_speed = -1;
 
 	while(1) {
-TEST_HIGH
- 	  	int16_t ave = 0;
-
 		if (check_sw() == 1) {
-            break;
-        }
-		for (int i = 0; i < GOERTZEL_SAMPLES; i++) {
-			uint32_t t = micros();
-			morseData[i] = GPIO_analogRead(GPIO_Ain0_A2) >> 1;
-			ave += morseData[i];
-			while ((micros() - t) < sampling_period_us);
+			break;
 		}
-		ave = ave / GOERTZEL_SAMPLES;
+		if (!morseReady[0] && !morseReady[1]) {
+			continue;
+		}
+
+		int buf_idx = morseReady[0] ? 0 : 1;
+		int16_t *morseData = get_morse_buf((uint8_t)buf_idx);
+		int16_t ave = (int16_t)(morseSum[buf_idx] / GOERTZEL_SAMPLES);
 		for (int i = 0; i < GOERTZEL_SAMPLES; i++) {
 			morseData[i] -= ave;
 		}
-TEST_LOW
 
 		// Goertzel 計算
 		magnitude = goertzel(morseData, GOERTZEL_SAMPLES);
@@ -656,6 +715,9 @@ TEST_LOW
 		realstatebefore = realstate;
 		lasthighduration = highduration;
 		filteredstatebefore = filteredstate;
+		morseReady[buf_idx] = 0;
 	}
+	TIM1->DMAINTENR &= ~TIM_IT_Update;
+	TIM1->CTLR1 &= ~TIM_CEN;
     return 0;
 }

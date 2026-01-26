@@ -118,7 +118,7 @@ static uint16_t _cursor_y                  = 0;      // Cursor position (x, y)
 static uint16_t _color                     = WHITE;  // Color
 static uint16_t _bg_color                  = BLACK;  // Background color
 //static uint8_t  _buffer[ST7789_WIDTH << 1] = {0};    // DMA buffer, long enough to fill a row.
-static uint8_t  _buffer[1152] = {0};    // 8x8 font, scale 3 => 24*24*2 bytes.
+static uint8_t  _buffer[ST7789_WIDTH * 2] = {0};    // DMA buffer, long enough to fill a row.
 /// \brief Initialize SPI
 /// \details Configure SPI, DMA, and RESET/DC/CS lines. CPOL = 1 and CPHA = 1.
 /// \todo Add a mode parameter for CPHA and CPOL configuration.
@@ -414,73 +414,34 @@ void tft_print_char(char c, uint8_t font_scale)
     const uint8_t s = font_scale;
 
     const uint16_t out_w = FONT_WIDTH  * s; // 8 or 16
-    const uint16_t out_h = FONT_HEIGHT * s; // 8 or 16
 
-    uint32_t sz = 0;
-
-    // フォントは列方向に1bit縦8ドット想定：start[j] のビット i を読む
+    START_WRITE();
     for (uint8_t i = 0; i < FONT_HEIGHT; i++)
     {
         const uint8_t colbits = (uint8_t)(1U << i);
-
-        // 縦方向の拡大（各スキャンラインを s 回繰り返す）
         for (uint8_t sy = 0; sy < s; sy++)
         {
+            uint16_t sz = 0;
             for (uint8_t j = 0; j < FONT_WIDTH; j++)
             {
                 const uint8_t on = (start[j] & colbits) ? 1 : 0;
                 const uint16_t color = on ? _color : _bg_color;
-
-                // 横方向の拡大（各ドットを s 回複製）
                 for (uint8_t sx = 0; sx < s; sx++)
                 {
                     _buffer[sz++] = (uint8_t)(color >> 8);
                     _buffer[sz++] = (uint8_t)(color & 0xFF);
                 }
             }
+            tft_set_window(_cursor_x, _cursor_y + (i * s + sy),
+                           _cursor_x + out_w - 1, _cursor_y + (i * s + sy));
+            DATA_MODE();
+            SPI_send_DMA(_buffer, sz, 1);
         }
     }
-
-    START_WRITE();
-    tft_set_window(_cursor_x, _cursor_y,
-                   _cursor_x + out_w - 1, _cursor_y + out_h - 1);
-    DATA_MODE();
-    SPI_send_DMA(_buffer, sz, 1);
     END_WRITE();
 
-    // 連続描画するならカーソルを進めたい場合はここで：
     // _cursor_x += out_w;
 }
-/*
-void tft_print_char(char c)
-{
-    const unsigned char* start = &font[c + (c << 2)];
-
-    uint16_t sz = 0;
-    for (uint8_t i = 0; i < FONT_HEIGHT; i++)
-    {
-        for (uint8_t j = 0; j < FONT_WIDTH; j++)
-        {
-            if ((*(start + j)) & (0x01 << i))
-            {
-                _buffer[sz++] = _color >> 8;
-                _buffer[sz++] = _color;
-            }
-            else
-            {
-                _buffer[sz++] = _bg_color >> 8;
-                _buffer[sz++] = _bg_color;
-            }
-        }
-    }
-
-    START_WRITE();
-    tft_set_window(_cursor_x, _cursor_y, _cursor_x + FONT_WIDTH - 1, _cursor_y + FONT_HEIGHT - 1);
-    DATA_MODE();
-    SPI_send_DMA(_buffer, sz, 1);
-    END_WRITE();
-}
-*/
 
 /// \brief Print a String
 /// \param str String to print

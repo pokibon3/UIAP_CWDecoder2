@@ -62,14 +62,13 @@
 #include "frequencyDetector.h"
 
 uint16_t sampling_period_us;
-uint8_t  buf[BUFSIZE];
+alignas(2) uint8_t  shared_buf[BUFSIZE];
 
 //==================================================================
 //	main
 //==================================================================
 int main()
 {
-	int16_t *morseData;
 	int8_t *vReal;
 	int8_t *vImag;
 
@@ -77,14 +76,12 @@ int main()
 	GPIO_setup();				// gpio Setup;
     tft_init();					// LCD init
 
-	vReal = (int8_t *)&buf[0];
-	vImag = (int8_t *)&buf[128];
-	morseData = (int16_t *)&buf[0];
-
+	vReal = (int8_t *)&shared_buf[0];
+	vImag = (int8_t *)&shared_buf[128];
 	while (1) {
 		// cw decoder
 		cwd_setup();			// freq detector Setup
-		cwDecoder(morseData);	// run cw decoder
+		cwDecoder();			// run cw decoder
 		// frequency detector
 		fd_setup();				// freq detector Setup
 		freqDetector(vReal, vImag);			// run freq counter
