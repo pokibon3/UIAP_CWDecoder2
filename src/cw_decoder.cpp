@@ -203,10 +203,12 @@ static int check_sw()
 		if (speed > 2) speed = 0;
 		setSpeed(speed);
 		cw_display_update_info(wpm, (uint8_t)sw, speed);
+		cw_display_tick();
 		Delay_Ms(300);
 	} else if (val == 2) {
 		sw ^= 1;
 		cw_display_update_info(wpm, (uint8_t)sw, speed);
+		cw_display_tick();
 		Delay_Ms(300);
     } else if (val == 1) {
 		Delay_Ms(300);
@@ -238,22 +240,22 @@ static int decodeAscii(int16_t asciinumber)
 	if (lastChar == 32 && asciinumber == 32) return 0;
 
 	if        (asciinumber == 1) {			// AR
-		cw_display_print_ascii('A');
-		cw_display_print_ascii('R');
+		cw_display_enqueue_char('A');
+		cw_display_enqueue_char('R');
 	} else if (asciinumber == 2) {			// KN
-		cw_display_print_ascii('K');
-		cw_display_print_ascii('N');
+		cw_display_enqueue_char('K');
+		cw_display_enqueue_char('N');
 	} else if (asciinumber == 3) {			// BT
-		cw_display_print_ascii('B');
-		cw_display_print_ascii('T');
+		cw_display_enqueue_char('B');
+		cw_display_enqueue_char('T');
 	} else if (asciinumber == 4) {			// VA
-		cw_display_print_ascii('V');
-		cw_display_print_ascii('A');
+		cw_display_enqueue_char('V');
+		cw_display_enqueue_char('A');
 	} else if (asciinumber == 7) {			// HH (訂正)
-		cw_display_print_ascii('H');
-		cw_display_print_ascii('H');
+		cw_display_enqueue_char('H');
+		cw_display_enqueue_char('H');
 	} else {
-		cw_display_print_ascii(asciinumber);
+		cw_display_enqueue_char(asciinumber);
 	}
 	lastChar = asciinumber;
 
@@ -425,6 +427,7 @@ int cwDecoder(void)
 		// ループ終端の状態更新
 		/////////////////////////////////
 		cw_display_update_info(wpm, (uint8_t)sw, speed);
+		cw_display_tick();
 		realstatebefore = realstate;
 		lasthighduration = highduration;
 		filteredstatebefore = filteredstate;

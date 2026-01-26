@@ -558,6 +558,30 @@ void tft_draw_bitmap(uint16_t x, uint16_t y, uint16_t width, uint16_t height, co
     END_WRITE();
 }
 
+void tft_set_scroll_area(uint16_t top_fixed, uint16_t scroll_height, uint16_t bottom_fixed)
+{
+    START_WRITE();
+    write_command_8(0x33); // VSCRDEF
+    DATA_MODE();
+    SPI_send((uint8_t)(top_fixed >> 8));
+    SPI_send((uint8_t)(top_fixed & 0xFF));
+    SPI_send((uint8_t)(scroll_height >> 8));
+    SPI_send((uint8_t)(scroll_height & 0xFF));
+    SPI_send((uint8_t)(bottom_fixed >> 8));
+    SPI_send((uint8_t)(bottom_fixed & 0xFF));
+    END_WRITE();
+}
+
+void tft_set_scroll_start(uint16_t scroll_start)
+{
+    START_WRITE();
+    write_command_8(0x37); // VSCRSADD
+    DATA_MODE();
+    SPI_send((uint8_t)(scroll_start >> 8));
+    SPI_send((uint8_t)(scroll_start & 0xFF));
+    END_WRITE();
+}
+
 /// \brief Draw a Vertical Line Fast
 /// \param x0 Start X coordinate
 /// \param y0 Start Y coordinate

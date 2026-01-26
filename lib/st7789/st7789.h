@@ -125,4 +125,14 @@ void tft_fill_rect(uint16_t x, uint16_t y, uint16_t width, uint16_t height, uint
 /// \param bitmap Bitmap
 void tft_draw_bitmap(uint16_t x, uint16_t y, uint16_t width, uint16_t height, const uint8_t* bitmap);
 
+/// \brief Set vertical scroll area
+/// \param top_fixed Top fixed area in pixels
+/// \param scroll_height Scrollable area height in pixels
+/// \param bottom_fixed Bottom fixed area in pixels
+void tft_set_scroll_area(uint16_t top_fixed, uint16_t scroll_height, uint16_t bottom_fixed);
+
+/// \brief Set vertical scroll start address
+/// \param scroll_start Scroll start offset within scrollable area
+void tft_set_scroll_start(uint16_t scroll_start);
+
 #endif  // __ST7789_H__

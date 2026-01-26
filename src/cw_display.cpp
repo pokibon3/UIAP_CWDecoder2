@@ -37,6 +37,19 @@ static int16_t info_last_speed = -1;
 
 static uint8_t draw_div = 0;
 static int lcdindex = 0;
+#define DISPLAY_QUEUE_SIZE 16
+static int16_t display_queue[DISPLAY_QUEUE_SIZE];
+static uint8_t queue_head = 0;
+static uint8_t queue_tail = 0;
+static uint8_t queue_count = 0;
+static uint8_t scroll_in_progress = 0;
+static uint8_t scroll_col = 0;
+static int16_t pending_char = 0;
+static uint8_t pending_valid = 0;
+#if defined(TFT_ST7739)
+static const uint16_t text_top = (uint16_t)((8 * FONT_SCALE_16X16 + 1) + 2);
+static const uint16_t scroll_area_height = (uint16_t)(LINE_HEIGHT * 4);
+#endif
 #if defined(TFT_ST7739)
 static uint8_t current_line = 0;
 static uint8_t line0[colums];
@@ -51,6 +64,106 @@ static uint8_t line1[colums];
 static uint8_t line2[colums];
 static uint8_t* const linebufs[] = { line0, line1, line2 };
 #endif
+
+static void display_queue_reset(void)
+{
+	queue_head = 0;
+	queue_tail = 0;
+	queue_count = 0;
+	scroll_in_progress = 0;
+	scroll_col = 0;
+	pending_char = 0;
+	pending_valid = 0;
+}
+
+static void display_queue_push(int16_t asciinumber)
+{
+	if (queue_count >= DISPLAY_QUEUE_SIZE) {
+		queue_head = (uint8_t)((queue_head + 1) % DISPLAY_QUEUE_SIZE);
+		queue_count--;
+	}
+	display_queue[queue_tail] = asciinumber;
+	queue_tail = (uint8_t)((queue_tail + 1) % DISPLAY_QUEUE_SIZE);
+	queue_count++;
+}
+
+static int display_queue_pop(int16_t *out)
+{
+	if (queue_count == 0) {
+		return 0;
+	}
+	*out = display_queue[queue_head];
+	queue_head = (uint8_t)((queue_head + 1) % DISPLAY_QUEUE_SIZE);
+	queue_count--;
+	return 1;
+}
+
+static void display_start_scroll(void)
+{
+	lcdindex = 0;
+	current_line++;
+#if defined(TFT_ST7739)
+	if (current_line >= 4) {
+		current_line = 3;
+		for (int i = 0; i <= colums - 1 ; i++){
+			line0[i] = line1[i];
+			line1[i] = line2[i];
+			line2[i] = line3[i];
+			line3[i] = 32;
+		}
+		scroll_in_progress = 1;
+		scroll_col = 0;
+	}
+#else
+	if (current_line >= 3) {
+		current_line = 2;
+		for (int i = 0; i <= colums - 1 ; i++){
+			line0[i] = line1[i];
+			line1[i] = line2[i];
+			line2[i] = 32;
+		}
+		scroll_in_progress = 1;
+		scroll_col = 0;
+	}
+#endif
+}
+
+static void display_draw_scroll_step(void)
+{
+#if defined(TFT_ST7739)
+	uint16_t line_y[4];
+	{
+		for (uint8_t i = 0; i < 4; i++) {
+			line_y[i] = (uint16_t)(text_top + (LINE_HEIGHT * i));
+		}
+	}
+	if (scroll_col < colums) {
+		uint16_t x = (uint16_t)(scroll_col * TEXT_ADVANCE);
+		for (uint8_t i = 0; i < 4; i++) {
+			tft_set_cursor(x, line_y[i]);
+			tft_print_char((char)linebufs[i][scroll_col], TEXT_SCALE);
+		}
+		scroll_col++;
+	}
+	if (scroll_col >= colums) {
+		scroll_in_progress = 0;
+	}
+#else
+	const uint16_t base_y = (uint16_t)(8 * FONT_SCALE_16X16 + 3);
+	const uint16_t line_y[] = { base_y, (uint16_t)(base_y + LINE_HEIGHT), (uint16_t)(base_y + LINE_HEIGHT * 2) };
+	if (scroll_col < colums) {
+		uint16_t x = (uint16_t)(scroll_col * TEXT_ADVANCE);
+		for (uint8_t i = 0; i < 3; i++) {
+			tft_set_cursor(x, line_y[i]);
+			tft_print_char((char)linebufs[i][scroll_col], TEXT_SCALE);
+		}
+		scroll_col++;
+	}
+	if (scroll_col >= colums) {
+		scroll_in_progress = 0;
+	}
+#endif
+}
 
 void cw_display_setup(void)
 {
@@ -128,6 +241,9 @@ void cw_display_setup(void)
 	info_last_sw = 0xFF;
 	info_last_speed = -1;
 	draw_div = 0;
+	display_queue_reset();
+#if defined(TFT_ST7739)
+#endif
 }
 
 void cw_display_reset_decoder_view(void)
@@ -140,6 +256,9 @@ void cw_display_reset_decoder_view(void)
 	info_last_speed = -1;
 	draw_div = 0;
 	tft_set_color(WHITE);
+	display_queue_reset();
+#if defined(TFT_ST7739)
+#endif
 }
 
 void cw_display_update_info(uint16_t wpm, uint8_t sw, int16_t speed)
@@ -234,38 +353,13 @@ void cw_display_update_info(uint16_t wpm, uint8_t sw, int16_t speed)
 	info_last_speed = speed;
 }
 
-void cw_display_print_ascii(int16_t asciinumber)
+static void cw_display_print_ascii(int16_t asciinumber)
 {
 #if defined(TFT_ST7739)
 	uint16_t line_y[4];
 	{
-		const uint16_t sep_y = (uint16_t)(8 * FONT_SCALE_16X16 + 1);
-		const uint16_t top = (uint16_t)(sep_y + 2);
 		for (uint8_t i = 0; i < 4; i++) {
-			line_y[i] = (uint16_t)(top + LINE_HEIGHT * i);
-		}
-	}
-	if (lcdindex > colums - 1){
-		lcdindex = 0;
-		current_line++;
-		if (current_line >= 4) {
-			current_line = 3;
-			for (int i = 0; i <= colums - 1 ; i++){
-				line0[i] = line1[i];
-				line1[i] = line2[i];
-				line2[i] = line3[i];
-				line3[i] = 32;
-			}
-			for (int i = 0; i <= colums - 1 ; i++){
-				tft_set_cursor(i * TEXT_ADVANCE, line_y[0]);
-				tft_print_char(line0[i], TEXT_SCALE);
-				tft_set_cursor(i * TEXT_ADVANCE, line_y[1]);
-				tft_print_char(line1[i], TEXT_SCALE);
-				tft_set_cursor(i * TEXT_ADVANCE, line_y[2]);
-				tft_print_char(line2[i], TEXT_SCALE);
-				tft_set_cursor(i * TEXT_ADVANCE, line_y[3]);
-				tft_print_char(32, TEXT_SCALE);
-			}
+			line_y[i] = (uint16_t)(text_top + (LINE_HEIGHT * i));
 		}
 	}
 	{
@@ -278,26 +372,6 @@ void cw_display_print_ascii(int16_t asciinumber)
 #else
 	const uint16_t base_y = (uint16_t)(8 * FONT_SCALE_16X16 + 3);
 	const uint16_t line_y[] = { base_y, (uint16_t)(base_y + LINE_HEIGHT), (uint16_t)(base_y + LINE_HEIGHT * 2) };
-	if (lcdindex > colums - 1){
-		lcdindex = 0;
-		current_line++;
-		if (current_line >= 3) {
-			current_line = 2;
-			for (int i = 0; i <= colums - 1 ; i++){
-				line0[i] = line1[i];
-				line1[i] = line2[i];
-				line2[i] = 32;
-			}
-			for (int i = 0; i <= colums - 1 ; i++){
-				tft_set_cursor(i * TEXT_ADVANCE, line_y[0]);
-				tft_print_char(line0[i], TEXT_SCALE);
-				tft_set_cursor(i * TEXT_ADVANCE, line_y[1]);
-				tft_print_char(line1[i], TEXT_SCALE);
-				tft_set_cursor(i * TEXT_ADVANCE, line_y[2]);
-				tft_print_char(32, TEXT_SCALE);
-			}
-		}
- 	}
 	{
 		uint8_t* line = linebufs[current_line];
 		line[lcdindex] = (uint8_t)asciinumber;
@@ -306,6 +380,47 @@ void cw_display_print_ascii(int16_t asciinumber)
 	}
 	lcdindex += 1;
 #endif
+}
+
+void cw_display_enqueue_char(int16_t asciinumber)
+{
+	if (asciinumber == 0) return;
+	display_queue_push(asciinumber);
+}
+
+void cw_display_tick(void)
+{
+	if (scroll_in_progress) {
+		display_draw_scroll_step();
+		return;
+	}
+	if (pending_valid) {
+		if (lcdindex > colums - 1) {
+			display_start_scroll();
+			if (scroll_in_progress) {
+				return;
+			}
+		}
+		cw_display_print_ascii(pending_char);
+		pending_valid = 0;
+		return;
+	}
+	{
+		int16_t ch = 0;
+		if (!display_queue_pop(&ch)) {
+			return;
+		}
+		if (lcdindex > colums - 1) {
+			pending_char = ch;
+			pending_valid = 1;
+			display_start_scroll();
+			if (scroll_in_progress) {
+				return;
+			}
+			pending_valid = 0;
+		}
+		cw_display_print_ascii(ch);
+	}
 }
 
 void cw_display_draw_magnitude(int32_t magnitude)
