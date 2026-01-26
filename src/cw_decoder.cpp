@@ -44,6 +44,7 @@
 #include "decode.h"
 #include "ch32v003fun.h"
 #include "ch32v003_GPIO_branchless.h"
+#include "cw_display.h"
 
 //#define SERIAL_OUT
 
@@ -52,24 +53,7 @@
 
 #define GOERTZEL_SAMPLES 48
 #define GOERTZEL_SAMPLING_FREQUENCY 8192
-#if (TFT_WIDTH >= 240)
-#define TEXT_SCALE 3
-#define FONT_WIDTH 24
-#define TEXT_ADVANCE 20
-#define LINE_HEIGHT 28
-const int colums = 12; /// 表示列数(本来は16/20向け)
-#else
-#define TEXT_SCALE 2
-#define FONT_WIDTH 12
-#define TEXT_ADVANCE 12
-#define LINE_HEIGHT 20
-const int colums = 13; /// 表示列数(本来は16/20向け)
-#endif
-static char title1[]   = " CW Decoder  ";
-static char title2[]   = "  for UIAP   ";
-static char title3[]   = " Version 1.4 ";
-static uint8_t first_flg = 1;
-
+#define NOISE_BLANKER_ENABLED 1
 static uint16_t magnitudelimit = 140;  		// 以前は 140
 static uint16_t magnitudelimit_low = 140;
 static uint16_t realstate = low;
@@ -92,33 +76,6 @@ static uint16_t wpm;
 static char		sw = MODE_US;
 static int16_t 	speed = 0;
 
-//static const char *tone[] = {
-//	" 700",
-//	" 800",
-//	"1000"
-//};
-static const uint16_t tone_hz[] = { 700, 800, 1000 };
-static char info_last_buf[24];
-static uint8_t info_sep_drawn = 0;
-static uint16_t info_last_wpm = 0xFFFF;
-static uint8_t info_last_sw = 0xFF;
-static int16_t info_last_speed = -1;
-
-int lcdindex = 0;
-#if defined(TFT_ST7739)
-static uint8_t current_line = 0;
-static uint8_t line0[colums];
-static uint8_t line1[colums];
-static uint8_t line2[colums];
-static uint8_t line3[colums];
-static uint8_t* const linebufs[] = { line0, line1, line2, line3 };
-#else
-static uint8_t current_line = 0;
-static uint8_t line0[colums];
-static uint8_t line1[colums];
-static uint8_t line2[colums];
-static uint8_t* const linebufs[] = { line0, line1, line2 };
-#endif
 uint8_t lastChar = 0;
 
 extern uint8_t shared_buf[BUFSIZE];
@@ -227,183 +184,11 @@ static uint16_t compute_nbtime(uint32_t unit_ms)
 		if (t > max_t) t = max_t;
 	}
 	if (t < 3) t = 3;
-	if (t > 20) t = 20;
+	// Cap debounce to allow up to 50 WPM (dot ~= 24ms, debounce <= ~1/3).
+	if (t > 8) t = 8;
 	return (uint16_t)t;
 }
 //==================================================================
-//	updateinfolinelcd() : 情報行をLCDに表示
-//==================================================================
-static void updateinfolinelcd()
-{
-	char buf[24];
-	const char *mode;
-	uint16_t w;
-	uint8_t buf_len;
-	uint8_t last_len;
-	uint8_t max_len;
-	uint8_t force_full = 0;
-	const uint16_t info_advance = (uint16_t)((8 - 2) * FONT_SCALE_16X16);
-	uint16_t x;
-	int16_t dirty_min = -1;
-	int16_t dirty_max = -1;
-
-	if (wpm < 10) {
-		w = 0;
-	} else {
-		w = wpm;
-	}
-	if (sw == 0) {
-		mode = "US";
-	} else {
-		mode = "JP";
-	}
-	if (info_sep_drawn &&
-		w == info_last_wpm &&
-		sw == info_last_sw &&
-		speed == info_last_speed) {
-		return;
-	}
-	if (info_sep_drawn && speed != info_last_speed) {
-		force_full = 1;
-	}
-#if defined(TFT_ST7739)
-#if (TFT_WIDTH < 240)
-	mini_snprintf(buf, sizeof(buf), "%2dW %s %dHz", w, mode, tone_hz[speed]);
-#else
-	mini_snprintf(buf, sizeof(buf), "%2dWPM %s Mode %4dHz", w, mode, tone_hz[speed]);
-#endif
-#else
-	mini_snprintf(buf, sizeof(buf), "%2dWPM %s%s", w, mode, tone[speed]);
-#endif
-	buf_len = (uint8_t)strlen(buf);
-	last_len = (uint8_t)strlen(info_last_buf);
-	max_len = (buf_len > last_len) ? buf_len : last_len;
-	if (max_len == 0) return;
-#if defined(TFT_ST7739)
-	if (!info_sep_drawn) {
-		uint16_t info_h = (uint16_t)(8 * FONT_SCALE_16X16);
-		uint16_t sep_y = (uint16_t)(info_h + 1);
-		tft_draw_line(0, sep_y, TFT_WIDTH - 1, sep_y, GREEN);
-		info_sep_drawn = 1;
-	}
-#else
-	if (!info_sep_drawn) {
-		tft_draw_line(0, 17, TFT_WIDTH - 1, 17, GREEN);
-		info_sep_drawn = 1;
-	}
-#endif
-	tft_set_color(BLUE);
-	if (force_full) {
-		dirty_min = 0;
-		dirty_max = (int16_t)max_len - 1;
-	} else {
-		for (uint8_t i = 0; i < max_len; i++) {
-			char now = (i < buf_len) ? buf[i] : ' ';
-			char old = (i < last_len) ? info_last_buf[i] : ' ';
-			if (now != old) {
-				if (dirty_min < 0) dirty_min = (int16_t)i;
-				dirty_max = (int16_t)i;
-			}
-		}
-		if (dirty_min < 0) {
-			tft_set_color(WHITE);
-			return;
-		}
-		if (dirty_min > 0) dirty_min--;
-		if (dirty_max + 1 < (int16_t)max_len) dirty_max++;
-	}
-	for (int16_t i = dirty_min; i <= dirty_max; i++) {
-		char now = (i < buf_len) ? buf[i] : ' ';
-		x = (uint16_t)(i * info_advance);
-		tft_set_cursor(x, 0);
-		tft_print_char(now, FONT_SCALE_16X16);
-	}
-	tft_set_color(WHITE);
-	memcpy(info_last_buf, buf, buf_len + 1);
-	info_last_wpm = w;
-	info_last_sw = (uint8_t)sw;
-	info_last_speed = speed;
-}
-
-//==================================================================
-//	printascii : ASCII文字をLCDに表示
-//==================================================================
-static void printAscii(int16_t asciinumber)
-{
-#ifdef SERIAL_OUT
-	printf("%c", asciinumber);
-#endif
-#if defined(TFT_ST7739)
-	uint16_t line_y[4];
-	{
-		const uint16_t sep_y = (uint16_t)(8 * FONT_SCALE_16X16 + 1);
-		const uint16_t top = (uint16_t)(sep_y + 2);
-		for (uint8_t i = 0; i < 4; i++) {
-			line_y[i] = (uint16_t)(top + LINE_HEIGHT * i);
-		}
-	}
-	if (lcdindex > colums - 1){
-		lcdindex = 0;
-		current_line++;
-		if (current_line >= 4) {
-			current_line = 3;
-			for (int i = 0; i <= colums - 1 ; i++){
-				line0[i] = line1[i];
-				line1[i] = line2[i];
-				line2[i] = line3[i];
-				line3[i] = 32;
-			}
-			for (int i = 0; i <= colums - 1 ; i++){
-				tft_set_cursor(i * TEXT_ADVANCE, line_y[0]);
-				tft_print_char(line0[i], TEXT_SCALE);
-				tft_set_cursor(i * TEXT_ADVANCE, line_y[1]);
-				tft_print_char(line1[i], TEXT_SCALE);
-				tft_set_cursor(i * TEXT_ADVANCE, line_y[2]);
-				tft_print_char(line2[i], TEXT_SCALE);
-				tft_set_cursor(i * TEXT_ADVANCE, line_y[3]);
-				tft_print_char(32, TEXT_SCALE);
-			}
-		}
-	}
-	{
-		uint8_t* line = linebufs[current_line];
-		line[lcdindex] = asciinumber;
-		tft_set_cursor(lcdindex * TEXT_ADVANCE, line_y[current_line]);
-		tft_print_char(asciinumber, TEXT_SCALE);
-	}
-	lcdindex += 1;
-#else
-	const uint16_t base_y = (uint16_t)(8 * FONT_SCALE_16X16 + 3);
-	const uint16_t line_y[] = { base_y, (uint16_t)(base_y + LINE_HEIGHT), (uint16_t)(base_y + LINE_HEIGHT * 2) };
-	if (lcdindex > colums - 1){
-		lcdindex = 0;
-		current_line++;
-		if (current_line >= 3) {
-			current_line = 2;
-			for (int i = 0; i <= colums - 1 ; i++){
-				line0[i] = line1[i];
-				line1[i] = line2[i];
-				line2[i] = 32;
-			}
-			for (int i = 0; i <= colums - 1 ; i++){
-				tft_set_cursor(i * TEXT_ADVANCE, line_y[0]);
-				tft_print_char(line0[i], TEXT_SCALE);
-				tft_set_cursor(i * TEXT_ADVANCE, line_y[1]);
-				tft_print_char(line1[i], TEXT_SCALE);
-				tft_set_cursor(i * TEXT_ADVANCE, line_y[2]);
-				tft_print_char(32, TEXT_SCALE);
-			}
-		}
- 	}
-	{
-		uint8_t* line = linebufs[current_line];
-		line[lcdindex] = asciinumber;
-		tft_set_cursor(lcdindex * TEXT_ADVANCE, line_y[current_line]);
-		tft_print_char(asciinumber, TEXT_SCALE);
-	}
-	lcdindex += 1;
-#endif
-}
 
 //==================================================================
 //	スイッチ入力の確認
@@ -417,11 +202,11 @@ static int check_sw()
 		speed += 1;
 		if (speed > 2) speed = 0;
 		setSpeed(speed);
-		updateinfolinelcd();
+		cw_display_update_info(wpm, (uint8_t)sw, speed);
 		Delay_Ms(300);
 	} else if (val == 2) {
 		sw ^= 1;
-		updateinfolinelcd();
+		cw_display_update_info(wpm, (uint8_t)sw, speed);
 		Delay_Ms(300);
     } else if (val == 1) {
 		Delay_Ms(300);
@@ -435,81 +220,14 @@ static int check_sw()
 //==================================================================
 int cwd_setup()
 {
-	if (first_flg == 1) {
-		const uint8_t title_gap = 4;
-		uint8_t max_title_len = (uint8_t)strlen(title1);
-		uint8_t title_scale_w;
-		uint8_t title_scale_h;
-		uint8_t title_scale;
-		uint8_t title_char_w;
-		uint8_t title_char_h;
-		uint16_t title_block_h;
-		uint16_t title_top;
-		uint16_t title_y1;
-		uint16_t title_y2;
-		uint16_t title_y3;
-
-		if ((uint8_t)strlen(title2) > max_title_len) max_title_len = (uint8_t)strlen(title2);
-		if ((uint8_t)strlen(title3) > max_title_len) max_title_len = (uint8_t)strlen(title3);
-		if (max_title_len == 0) max_title_len = 1;
-
-		title_scale_w = (uint8_t)(TFT_WIDTH / (max_title_len * (8 - 2)));
-		if (title_scale_w < 1) title_scale_w = 1;
-		if (title_scale_w > 3) title_scale_w = 3;
-
-		title_scale_h = (uint8_t)((TFT_HEIGHT - (title_gap * 2)) / (8 * 3));
-		if (title_scale_h < 1) title_scale_h = 1;
-		if (title_scale_h > 3) title_scale_h = 3;
-
-		title_scale = (title_scale_w < title_scale_h) ? title_scale_w : title_scale_h;
-		title_char_w = (uint8_t)((8 - 2) * title_scale);
-		title_char_h = (uint8_t)(8 * title_scale);
-		title_block_h = (uint16_t)(title_char_h * 3 + title_gap * 2);
-		title_top = (TFT_HEIGHT > title_block_h) ? (uint16_t)((TFT_HEIGHT - title_block_h) / 2) : 0;
-		title_y1 = title_top;
-		title_y2 = title_top + title_char_h + title_gap;
-		title_y3 = title_top + (title_char_h + title_gap) * 2;
-
-		first_flg = 0;
-		tft_fill_rect(0, 0, TFT_WIDTH, TFT_HEIGHT, BLACK);
-		tft_set_cursor(0, 0);
-		tft_set_color(BLUE);
-		tft_set_cursor((TFT_WIDTH - (uint16_t)(strlen(title1) * title_char_w)) / 2, title_y1);
-		tft_print(title1, title_scale);
-		tft_set_color(RED);
-		tft_set_cursor((TFT_WIDTH - (uint16_t)(strlen(title2) * title_char_w)) / 2, title_y2);
-		tft_print(title2, title_scale);
-		tft_set_cursor((TFT_WIDTH - (uint16_t)(strlen(title3) * title_char_w)) / 2, title_y3);
-		tft_set_color(GREEN);
-		tft_print(title3, title_scale)	;
-	    Delay_Ms( 1000 );	
-	}
-	tft_set_color(WHITE);
-
+	cw_display_setup();
 	initGoertzel(speed);
 	sampling_period_us = 900000 / GOERTZEL_SAMPLING_FREQUENCY;
 	reset_morse_buffers();
 	tim1_pwm_init();
-#if defined(TFT_ST7739)
-	current_line = 0;
-	lcdindex = 0;
-	for (int i = 0; i < colums; i++){
-		line0[i] = 32;
-		line1[i] = 32;
-		line2[i] = 32;
-		line3[i] = 32;
-	}
-#else
-	current_line = 0;
-	lcdindex = 0;
-	for (int i = 0; i < colums; i++){
-		line0[i] = 32;
-		line1[i] = 32;
-		line2[i] = 32;
-	}
-#endif
-    return 0;
+	return 0;
 }
+
 
 //==================================================================
 //	cwDecoder : デコーダ本体
@@ -520,22 +238,22 @@ static int decodeAscii(int16_t asciinumber)
 	if (lastChar == 32 && asciinumber == 32) return 0;
 
 	if        (asciinumber == 1) {			// AR
-		printAscii('A');
-		printAscii('R');
+		cw_display_print_ascii('A');
+		cw_display_print_ascii('R');
 	} else if (asciinumber == 2) {			// KN
-		printAscii('K');
-		printAscii('N');
+		cw_display_print_ascii('K');
+		cw_display_print_ascii('N');
 	} else if (asciinumber == 3) {			// BT
-		printAscii('B');
-		printAscii('T');
+		cw_display_print_ascii('B');
+		cw_display_print_ascii('T');
 	} else if (asciinumber == 4) {			// VA
-		printAscii('V');
-		printAscii('A');
+		cw_display_print_ascii('V');
+		cw_display_print_ascii('A');
 	} else if (asciinumber == 7) {			// HH (訂正)
-		printAscii('H');
-		printAscii('H');
+		cw_display_print_ascii('H');
+		cw_display_print_ascii('H');
 	} else {
-		printAscii(asciinumber);
+		cw_display_print_ascii(asciinumber);
 	}
 	lastChar = asciinumber;
 
@@ -548,14 +266,7 @@ static int decodeAscii(int16_t asciinumber)
 int cwDecoder(void)
 {
 	int32_t magnitude;
-	uint8_t draw_div = 0;
-
-	tft_fill_rect(0, 0, TFT_WIDTH, TFT_HEIGHT, BLACK);
-	info_last_buf[0] = '\0';
-	info_sep_drawn = 0;
-	info_last_wpm = 0xFFFF;
-	info_last_sw = 0xFF;
-	info_last_speed = -1;
+	cw_display_reset_decoder_view();
 
 	while(1) {
 		if (check_sw() == 1) {
@@ -575,16 +286,7 @@ int cwDecoder(void)
 		// Goertzel 計算
 		magnitude = goertzel(morseData, GOERTZEL_SAMPLES);
 //TEST_LOW
-		if (++draw_div >= 8) {
-			draw_div = 0;
-			tft_draw_line(TFT_WIDTH - 1, TFT_HEIGHT - 1, TFT_WIDTH - 1, 0, BLACK);
-			{
-				int16_t w = (int16_t)(TFT_HEIGHT - 1) - (magnitude / 8);
-				if (w < 0) w = 0;
-				if (w > (int16_t)(TFT_HEIGHT - 1)) w = (int16_t)(TFT_HEIGHT - 1);
-				tft_draw_line(TFT_WIDTH - 1, TFT_HEIGHT - 1, TFT_WIDTH - 1, w, YELLOW);
-			}
-		}
+		cw_display_draw_magnitude(magnitude);
 #ifdef SERIAL_OUT
 		printf("mag = %d\n", magnitude);
 #endif
@@ -613,15 +315,26 @@ int cwDecoder(void)
 		if (realstate != realstatebefore){
 			laststarttime = millis();
 		}
+#if NOISE_BLANKER_ENABLED
 		{
 			uint32_t unit = (hightimesavg > 0) ? hightimesavg : highduration;
 			nbtime = compute_nbtime(unit);
+		}
+		// Bypass debounce for the first rising edge after a long gap.
+		{
+			uint32_t unit = (hightimesavg > 0) ? hightimesavg : highduration;
+			if (filteredstate == low && realstate == high && lowduration > unit * 6) {
+				filteredstate = realstate;
+			}
 		}
 		if ((millis()-laststarttime)> nbtime) {
 			if (realstate != filteredstate) {
 				filteredstate = realstate;
 			}
 		}
+#else
+		filteredstate = realstate;
+#endif
 
 		////////////////////////////////////////////////////////////
 		// HIGH/LOW の継続時間を計測
@@ -635,10 +348,10 @@ int cwDecoder(void)
 				startttimelow = millis();
 				highduration = (millis() - starttimehigh);
 				if (highduration < (2*hightimesavg) || hightimesavg == 0) {
-				hightimesavg = (highduration+hightimesavg+hightimesavg) / 3;     // 短点平均を更新 (3点移動平均)
+					hightimesavg = (highduration+hightimesavg+hightimesavg) / 3;     // dot avg (3-sample moving avg)
 				}
 				if (highduration > (5*hightimesavg) ) {
-				hightimesavg = highduration+hightimesavg;     // 速度低下が急な場合に追従
+					hightimesavg = highduration+hightimesavg;     // follow sudden speed drop
 				}
 				if (hightimesavg < 24) {
 					hightimesavg = 24;
@@ -711,7 +424,7 @@ int cwDecoder(void)
 		//////////////////////////////////
 		// ループ終端の状態更新
 		/////////////////////////////////
-		updateinfolinelcd();
+		cw_display_update_info(wpm, (uint8_t)sw, speed);
 		realstatebefore = realstate;
 		lasthighduration = highduration;
 		filteredstatebefore = filteredstate;
