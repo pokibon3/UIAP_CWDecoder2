@@ -49,6 +49,13 @@ void tim1_pwm_init( void )
 	TIM1->CTLR1 |= TIM_CEN;
 }
 
+void tim1_pwm_stop(void)
+{
+	// Disable update interrupt and stop timer to avoid stray ISR use.
+	TIM1->DMAINTENR &= ~TIM_IT_Update;
+	TIM1->CTLR1 &= ~TIM_CEN;
+}
+
 //==================================================================
 //	setup
 //==================================================================

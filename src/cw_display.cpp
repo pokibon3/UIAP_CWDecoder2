@@ -294,6 +294,9 @@ void cw_display_update_info(uint16_t wpm, uint8_t sw, int16_t speed)
 	if (info_sep_drawn && speed != info_last_speed) {
 		force_full = 1;
 	}
+	if (info_sep_drawn && sw != info_last_sw) {
+		force_full = 1;
+	}
 #if defined(TFT_ST7739)
 #if (TFT_WIDTH < 240)
 	mini_snprintf(buf, sizeof(buf), "%2dW %s %dHz", w, mode, tone_hz[speed]);

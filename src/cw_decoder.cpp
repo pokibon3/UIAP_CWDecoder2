@@ -433,7 +433,6 @@ int cwDecoder(void)
 		filteredstatebefore = filteredstate;
 		morseReady[buf_idx] = 0;
 	}
-	TIM1->DMAINTENR &= ~TIM_IT_Update;
-	TIM1->CTLR1 &= ~TIM_CEN;
+	tim1_pwm_stop();
     return 0;
 }

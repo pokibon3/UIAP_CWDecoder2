@@ -49,6 +49,7 @@ static int check_sw()
 //==================================================================
 int fd_setup()
 {
+    tim1_pwm_stop();
     sampling_period_us = 900000L / FD_SAMPLING_FREQUENCY;
     //sampling_period_us = 1000000L / FD_SAMPLING_FREQUENCY;
 

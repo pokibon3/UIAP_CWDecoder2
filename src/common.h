@@ -6,7 +6,7 @@
 #define GPIO_ADC_MUX_DELAY 100
 #define GPIO_ADC_sampletime GPIO_ADC_sampletime_43cy
 
-#define SCALE 8
+#define SCALE 6
 
 #define micros() (SysTick->CNT / DELAY_US_TIME)
 #define millis() (SysTick->CNT / DELAY_MS_TIME)
@@ -51,5 +51,6 @@ extern int GPIO_setup();
 extern int check_input();
 
 extern void tim1_pwm_init(void);
+extern void tim1_pwm_stop(void);
 
 extern "C" void TIM1_UP_IRQHandler(void) __attribute__((interrupt));
