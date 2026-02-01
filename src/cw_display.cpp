@@ -297,6 +297,11 @@ void cw_display_update_info(uint16_t wpm, uint8_t sw, int16_t speed)
 	if (info_sep_drawn && sw != info_last_sw) {
 		force_full = 1;
 	}
+#if !defined(TFT_ST7739)
+	// ST7735 info line uses overlapping character advance; partial redraws can erase
+	// pixels from following characters, so redraw the full line.
+	force_full = 1;
+#endif
 #if defined(TFT_ST7739)
 #if (TFT_WIDTH < 240)
 	mini_snprintf(buf, sizeof(buf), "%2dW %s %dHz", w, mode, tone_hz[speed]);
