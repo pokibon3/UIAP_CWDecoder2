@@ -1,39 +1,3 @@
-///////////////////////////////////////////////////////////////////////
-// CWデコーダ (Hjalmar Skovholm Hansen OZ1JHM) バージョン 1.01       //
-// 自由に改変・複製できますが、GPL を遵守してください。       //
-// ライセンス: <a href="http://www.gnu.org/copyleft/gpl.html" title="http://www.gnu.org/copyleft/gpl.html" rel="nofollow">http://www.gnu.org/copyleft/gpl.html</a>              //
-// 議論・提案はこちら:                                               //
-// <a href="https://groups.yahoo.com/neo/groups/oz1jhm/conversations/messages" title="https://groups.yahoo.com/neo/groups/oz1jhm/conversations/messages" rel="nofollow">https://groups.yahoo.com/neo/groups/oz1jhm/conversations/messages</a> //
-//                                                                   //
-// KC2UEZ による改変 (バージョン 1.2):                                     //
-// - Arduino NANO に対応                                            //
-// - 起動時に「ターゲット周波数」と「帯域」を選択可能               //
-///////////////////////////////////////////////////////////////////////
- 
-///////////////////////////////////////////////////////////////////////////
-// Goertzel 法の解説: <a href="http://en.wikipedia.org/wiki/Goertzel_algorithm" title="http://en.wikipedia.org/wiki/Goertzel_algorithm" rel="nofollow">http://en.wikipedia.org/wiki/Goertzel_algorithm</a>     //
-// FFT の参考: <a href="http://www.dspguide.com/pdfbook.htm" title="http://www.dspguide.com/pdfbook.htm" rel="nofollow">http://www.dspguide.com/pdfbook.htm</a>                //
-///////////////////////////////////////////////////////////////////////////
-
-///////////////////////////////////////////////////////////////////////////
-// 改変版 (Kimio Ohe)
-// 変更点:
-//  - UIAPduino Pro Micro(CH32V003) に移植
-//  - 周波数検出機能を追加
-//  - 全ソースをリファクタリング
-// 日付: 2025-11-07 バージョン 1.0
-//  - DFT を Goertzel 法に変更
-// 日付: 2025.12.05 バージョン 1.1
-//  - オーディオ入力ダイナミックレンジ拡大
-// 日付: 2025.12.13 バージョン 1.2
-//  - DFTの周波数を調整
-//  - DFTの入力レベルを調整
-// 日付: 2025.12.20 バージョン 1.3
-//  - デコードタイミング微調整
-//
-// このソフトウェアは GNU General Public License (GPL) に基づき配布されています。
-// 改変版も同じ GPL ライセンスで再配布してください。
-///////////////////////////////////////////////////////////////////////////
 //
 //	CWデコーダ関数
 //
