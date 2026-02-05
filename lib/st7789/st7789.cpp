@@ -497,7 +497,7 @@ void tft_print_number(int32_t num, uint16_t width)
         _cursor_x += width - num_width;
     }
 
-    tft_print(&str[position]);
+    tft_print(&str[position], 1);
 }
 
 /// \brief Draw a Pixel
@@ -726,3 +726,19 @@ void tft_draw_line(int16_t x0, int16_t y0, int16_t x1, int16_t y1, uint16_t colo
         _tft_draw_line_bresenham(x0, y0, x1, y1, color);
     }
 }
+
+// Compatibility wrappers (st7789_* API)
+void st7789_init(void) { tft_init(); }
+void st7789_set_cursor(uint16_t x, uint16_t y) { tft_set_cursor(x, y); }
+void st7789_set_color(uint16_t color) { tft_set_color(color); }
+void st7789_set_background_color(uint16_t color) { tft_set_background_color(color); }
+void st7789_print_char(char c, uint8_t scale) { tft_print_char(c, scale); }
+void st7789_print(const char* str, uint8_t scale) { tft_print(str, scale); }
+void st7789_print_number(int32_t num, uint16_t width) { tft_print_number(num, width); }
+void st7789_draw_pixel(uint16_t x, uint16_t y, uint16_t color) { tft_draw_pixel(x, y, color); }
+void st7789_draw_line(int16_t x0, int16_t y0, int16_t x1, int16_t y1, uint16_t color) { tft_draw_line(x0, y0, x1, y1, color); }
+void st7789_draw_rect(uint16_t x, uint16_t y, uint16_t width, uint16_t height, uint16_t color) { tft_draw_rect(x, y, width, height, color); }
+void st7789_fill_rect(uint16_t x, uint16_t y, uint16_t width, uint16_t height, uint16_t color) { tft_fill_rect(x, y, width, height, color); }
+void st7789_draw_bitmap(uint16_t x, uint16_t y, uint16_t width, uint16_t height, const uint8_t* bitmap) { tft_draw_bitmap(x, y, width, height, bitmap); }
+void st7789_set_scroll_area(uint16_t top_fixed, uint16_t scroll_height, uint16_t bottom_fixed) { tft_set_scroll_area(top_fixed, scroll_height, bottom_fixed); }
+void st7789_set_scroll_start(uint16_t scroll_start) { tft_set_scroll_start(scroll_start); }
