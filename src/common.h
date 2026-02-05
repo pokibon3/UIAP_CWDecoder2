@@ -11,10 +11,10 @@
 #define micros() (SysTick->CNT / DELAY_US_TIME)
 #define millis() (SysTick->CNT / DELAY_MS_TIME)
 
-// TFT selection (set TFT_ST7735 or TFT_ST7739/TFT_ST7789 via build flags)
+// TFT selection (set TFT_ST7735 or TFT_ST7789 via build flags)
 
-#if (defined(TFT_ST7735) && defined(TFT_ST7739)) || (defined(TFT_ST7735) && defined(TFT_ST7789)) || (defined(TFT_ST7739) && defined(TFT_ST7789))
-#error "Define only one of TFT_ST7735, TFT_ST7739, or TFT_ST7789."
+#if (defined(TFT_ST7735) && defined(TFT_ST7789))
+#error "Define only one of TFT_ST7735 or TFT_ST7789."
 #endif
 
 #ifndef TFT_CONFIG_ONLY
@@ -34,7 +34,7 @@
 #define tft_draw_bitmap st7735_draw_bitmap
 #define TFT_WIDTH  ST7735_WIDTH
 #define TFT_HEIGHT ST7735_HEIGHT
-#elif defined(TFT_ST7739) || defined(TFT_ST7789)
+#elif defined(TFT_ST7789)
 #include "st7789.h"
 #define tft_init st7789_init
 #define tft_set_cursor st7789_set_cursor
@@ -51,7 +51,7 @@
 #define TFT_WIDTH  ST7789_WIDTH
 #define TFT_HEIGHT ST7789_HEIGHT
 #else
-#error "Define TFT_ST7735 or TFT_ST7739/TFT_ST7789."
+#error "Define TFT_ST7735 or TFT_ST7789."
 #endif
 #endif
 
