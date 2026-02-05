@@ -51,8 +51,8 @@
 
 #define ST7789_COLMOD_16_BPP 0x55
 
-#define FONT_WIDTH  8
-#define FONT_HEIGHT 8
+#define FONT_WIDTH  5
+#define FONT_HEIGHT 7
 
 static uint16_t cursor_x = 0;
 static uint16_t cursor_y = 0;
@@ -213,7 +213,7 @@ void st7789_print_char(char c, uint8_t scale)
         {
             for (uint8_t col = 0; col < FONT_WIDTH; col++)
             {
-                const uint8_t bits = glyph[col]; // vertical 8-bit column
+                const uint8_t bits = glyph[col];
                 const uint16_t color = (bits & (uint8_t)(1U << row)) ? fg_color : bg_color;
                 for (uint8_t sx = 0; sx < scale; sx++)
                 {
@@ -234,7 +234,7 @@ void st7789_print(const char* str, uint8_t scale)
     while (*str)
     {
         st7789_print_char(*str++, scale);
-        cursor_x = (uint16_t)(cursor_x + (FONT_WIDTH + FONT_SPACING_HOR) * scale);
+        cursor_x = (uint16_t)(cursor_x + (FONT_WIDTH * scale));
     }
 }
 

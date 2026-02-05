@@ -64,40 +64,6 @@
 uint16_t sampling_period_us;
 alignas(2) uint8_t  shared_buf[BUFSIZE];
 
-static void tft_test_pattern(void)
-{
-	tft_fill_rect(0, 0, TFT_WIDTH, TFT_HEIGHT, BLACK);
-	Delay_Ms(300);
-	tft_fill_rect(0, 0, TFT_WIDTH, TFT_HEIGHT, WHITE);
-	Delay_Ms(300);
-	tft_fill_rect(0, 0, TFT_WIDTH, TFT_HEIGHT, RED);
-	Delay_Ms(300);
-	tft_fill_rect(0, 0, TFT_WIDTH, TFT_HEIGHT, GREEN);
-	Delay_Ms(300);
-	tft_fill_rect(0, 0, TFT_WIDTH, TFT_HEIGHT, BLUE);
-	Delay_Ms(300);
-
-	// 1px border
-	tft_fill_rect(0, 0, TFT_WIDTH, 1, YELLOW);
-	tft_fill_rect(0, TFT_HEIGHT - 1, TFT_WIDTH, 1, YELLOW);
-	tft_fill_rect(0, 0, 1, TFT_HEIGHT, YELLOW);
-	tft_fill_rect(TFT_WIDTH - 1, 0, 1, TFT_HEIGHT, YELLOW);
-
-	// crosshair
-	tft_fill_rect(TFT_WIDTH / 2, 0, 1, TFT_HEIGHT, CYAN);
-	tft_fill_rect(0, TFT_HEIGHT / 2, TFT_WIDTH, 1, CYAN);
-	Delay_Ms(5000);
-
-	// text
-	tft_set_background_color(BLACK);
-	tft_set_color(WHITE);
-	tft_set_cursor(0, 0);
-	tft_print("0123456789", FONT_SCALE_8X8);
-
-	tft_set_cursor(TFT_WIDTH - (4 * 8), TFT_HEIGHT - 8);
-	tft_print("WXYZ", FONT_SCALE_8X8);
-}
-
 //==================================================================
 //	main
 //==================================================================
@@ -109,7 +75,6 @@ int main()
 	SystemInit();				// ch32v003 Setup
 	GPIO_setup();				// gpio Setup;
     tft_init();					// LCD init
-	tft_test_pattern();
 
 	vReal = (int8_t *)&shared_buf[0];
 	vImag = (int8_t *)&shared_buf[128];
