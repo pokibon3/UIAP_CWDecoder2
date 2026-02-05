@@ -156,13 +156,16 @@ TEST_LOW
 			vReal[i] = abs(vReal[i]) + abs(vImag[i]); // Magnitude calculation without sqrt
 			//vReal[i] = sqrt(vReal[i] * vReal[i] + vImag[i] * vImag[i]);
 		}
-		// draw FFT result
+		// draw FFT result (DMA scanline)
 		uint8_t maxIndex = 0;
 		uint8_t maxValue = 0;
+		static uint8_t heights[TFT_WIDTH] = {0};
+		static uint8_t linebuf[TFT_WIDTH * 2] = {0};
+		const uint16_t line_width = (TFT_WIDTH > 2) ? (uint16_t)(TFT_WIDTH - 2) : 0;
+
+		for (uint16_t i = 0; i < TFT_WIDTH; i++) heights[i] = 0;
 
 		tft_fill_rect(1, FFT_AREA_Y_TOP, TFT_WIDTH - 2, FFT_AREA_HEIGHT, BLACK);
-		tft_draw_line(line1_x, 1, line1_x, FFT_FRAME_HEIGHT - 1, DARKBLUE); // 1.0kHz line
-		tft_draw_line(line2_x, 1, line2_x, FFT_FRAME_HEIGHT - 1, DARKBLUE); // 2.0kHz line
 
 		for (int i = 1; i < fft_bins; i++) {
 			int16_t val = vReal[i] * SCALE;
@@ -170,13 +173,32 @@ TEST_LOW
 			uint16_t x = plot_left + (i * bin_step);
 			uint16_t bar_width = (bin_step > 2) ? (bin_step - 1) : 1;
 			for (uint16_t dx = 0; dx < bar_width; dx++) {
-				tft_draw_line(x + dx, FFT_AREA_Y_BOTTOM, x + dx, FFT_AREA_Y_BOTTOM - val, WHITE);
+				uint16_t px = (uint16_t)(x + dx);
+				if (px < TFT_WIDTH) {
+					heights[px] = (uint8_t)val;
+				}
 			}
 			if (vReal[i] > maxValue) {
 				maxValue = vReal[i];
 				maxIndex = i;
 			}
 		}
+
+		for (uint16_t y = FFT_AREA_Y_TOP; y <= FFT_AREA_Y_BOTTOM; y++) {
+			uint16_t idx = 0;
+			uint16_t h = (uint16_t)(FFT_AREA_Y_BOTTOM - y);
+			for (uint16_t x = 1; x < TFT_WIDTH - 1; x++) {
+				uint16_t color = (heights[x] > h) ? WHITE : BLACK;
+				linebuf[idx++] = (uint8_t)(color >> 8);
+				linebuf[idx++] = (uint8_t)color;
+			}
+			if (line_width > 0) {
+				tft_draw_bitmap(1, y, line_width, 1, linebuf);
+			}
+		}
+
+		tft_draw_line(line1_x, 1, line1_x, FFT_FRAME_HEIGHT - 1, DARKBLUE); // 1.0kHz line
+		tft_draw_line(line2_x, 1, line2_x, FFT_FRAME_HEIGHT - 1, DARKBLUE); // 2.0kHz line
 		// disp freqeuncy
 		peakFrequency = (FD_SAMPLING_FREQUENCY / SAMPLES) * maxIndex;
 		if (peakFrequency != oldFreequency) {
