@@ -1,7 +1,7 @@
 #pragma once
 #include <stdint.h>
 
-// Display geometry
+// Display geometry (landscape)
 #define ST7789_WIDTH    240
 #define ST7789_HEIGHT   135
 #define ST7789_X_OFFSET 40
@@ -38,6 +38,7 @@
 
 #define FONT_SCALE_8X8   1
 #define FONT_SCALE_16X16 2
+#define FONT_SCALE_24X24 3
 
 void st7789_init(void);
 void st7789_set_cursor(uint16_t x, uint16_t y);
