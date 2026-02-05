@@ -22,11 +22,11 @@ static const int colums = 13;
 
 static const char title1[] = " CW Decoder  ";
 static const char title2[] = "  for UIAP   ";
-static const char title3[] = " Version 1.4 ";
+static const char title3[] = " Version 1.5";
 static uint8_t first_flg = 1;
 
 static const uint16_t tone_hz[] = { 700, 800, 1000 };
-#if !defined(TFT_ST7739)
+#if !defined(TFT_ST7789)
 static const char *tone[] = { " 700", " 800", "1000" };
 #endif
 static char info_last_buf[24];
@@ -46,11 +46,11 @@ static uint8_t scroll_in_progress = 0;
 static uint8_t scroll_col = 0;
 static int16_t pending_char = 0;
 static uint8_t pending_valid = 0;
-#if defined(TFT_ST7739)
+#if defined(TFT_ST7789)
 static const uint16_t text_top = (uint16_t)((8 * FONT_SCALE_16X16 + 1) + 2);
 static const uint16_t scroll_area_height = (uint16_t)(LINE_HEIGHT * 4);
 #endif
-#if defined(TFT_ST7739)
+#if defined(TFT_ST7789)
 static uint8_t current_line = 0;
 static uint8_t line0[colums];
 static uint8_t line1[colums];
@@ -102,7 +102,7 @@ static void display_start_scroll(void)
 {
 	lcdindex = 0;
 	current_line++;
-#if defined(TFT_ST7739)
+#if defined(TFT_ST7789)
 	if (current_line >= 4) {
 		current_line = 3;
 		for (int i = 0; i <= colums - 1 ; i++){
@@ -130,7 +130,7 @@ static void display_start_scroll(void)
 
 static void display_draw_scroll_step(void)
 {
-#if defined(TFT_ST7739)
+#if defined(TFT_ST7789)
 	uint16_t line_y[4];
 	{
 		for (uint8_t i = 0; i < 4; i++) {
@@ -185,17 +185,21 @@ void cw_display_setup(void)
 		if ((uint8_t)strlen(title3) > max_title_len) max_title_len = (uint8_t)strlen(title3);
 		if (max_title_len == 0) max_title_len = 1;
 
-		title_scale_w = (uint8_t)(TFT_WIDTH / (max_title_len * (8 - 2)));
+		title_scale_w = (uint8_t)(TFT_WIDTH / (max_title_len * TFT_FONT_ADV));
 		if (title_scale_w < 1) title_scale_w = 1;
 		if (title_scale_w > 3) title_scale_w = 3;
 
-		title_scale_h = (uint8_t)((TFT_HEIGHT - (title_gap * 2)) / (8 * 3));
+		title_scale_h = (uint8_t)((TFT_HEIGHT - (title_gap * 2)) / (TFT_FONT_H * 3));
 		if (title_scale_h < 1) title_scale_h = 1;
 		if (title_scale_h > 3) title_scale_h = 3;
 
 		title_scale = (title_scale_w < title_scale_h) ? title_scale_w : title_scale_h;
-		title_char_w = (uint8_t)((8 - 2) * title_scale);
-		title_char_h = (uint8_t)(8 * title_scale);
+		if (title_scale < 3) title_scale++;
+#if defined(TFT_ST7735)
+		if (title_scale > 1) title_scale--;
+#endif
+		title_char_w = (uint8_t)(TFT_FONT_ADV * title_scale);
+		title_char_h = (uint8_t)(TFT_FONT_H * title_scale);
 		title_block_h = (uint16_t)(title_char_h * 3 + title_gap * 2);
 		title_top = (TFT_HEIGHT > title_block_h) ? (uint16_t)((TFT_HEIGHT - title_block_h) / 2) : 0;
 		title_y1 = title_top;
@@ -220,7 +224,7 @@ void cw_display_setup(void)
 	tft_set_color(WHITE);
 	current_line = 0;
 	lcdindex = 0;
-#if defined(TFT_ST7739)
+#if defined(TFT_ST7789)
 	for (int i = 0; i < colums; i++) {
 		line0[i] = 32;
 		line1[i] = 32;
@@ -242,7 +246,7 @@ void cw_display_setup(void)
 	info_last_speed = -1;
 	draw_div = 0;
 	display_queue_reset();
-#if defined(TFT_ST7739)
+#if defined(TFT_ST7789)
 #endif
 }
 
@@ -257,7 +261,7 @@ void cw_display_reset_decoder_view(void)
 	draw_div = 0;
 	tft_set_color(WHITE);
 	display_queue_reset();
-#if defined(TFT_ST7739)
+#if defined(TFT_ST7789)
 #endif
 }
 
@@ -297,12 +301,12 @@ void cw_display_update_info(uint16_t wpm, uint8_t sw, int16_t speed)
 	if (info_sep_drawn && sw != info_last_sw) {
 		force_full = 1;
 	}
-#if !defined(TFT_ST7739)
+#if !defined(TFT_ST7789)
 	// ST7735 info line uses overlapping character advance; partial redraws can erase
 	// pixels from following characters, so redraw the full line.
 	force_full = 1;
 #endif
-#if defined(TFT_ST7739)
+#if defined(TFT_ST7789)
 #if (TFT_WIDTH < 240)
 	mini_snprintf(buf, sizeof(buf), "%2dW %s %dHz", w, mode, tone_hz[speed]);
 #else
@@ -315,7 +319,7 @@ void cw_display_update_info(uint16_t wpm, uint8_t sw, int16_t speed)
 	last_len = (uint8_t)strlen(info_last_buf);
 	max_len = (buf_len > last_len) ? buf_len : last_len;
 	if (max_len == 0) return;
-#if defined(TFT_ST7739)
+#if defined(TFT_ST7789)
 	if (!info_sep_drawn) {
 		uint16_t info_h = (uint16_t)(8 * FONT_SCALE_16X16);
 		uint16_t sep_y = (uint16_t)(info_h + 1);
@@ -363,7 +367,7 @@ void cw_display_update_info(uint16_t wpm, uint8_t sw, int16_t speed)
 
 static void cw_display_print_ascii(int16_t asciinumber)
 {
-#if defined(TFT_ST7739)
+#if defined(TFT_ST7789)
 	uint16_t line_y[4];
 	{
 		for (uint8_t i = 0; i < 4; i++) {
@@ -444,3 +448,4 @@ void cw_display_draw_magnitude(int32_t magnitude)
 		}
 	}
 }
+

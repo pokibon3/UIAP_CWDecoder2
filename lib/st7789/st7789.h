@@ -1,36 +1,17 @@
-/// \brief ST7789 Driver for CH32V003
-///
-/// \author Li Mingjie
-///  - Email:  limingjie@outlook.com
-///  - GitHub: https://github.com/limingjie/
-///
-/// \date Sep 2023
-///
-/// \section References
-///  - https://github.com/moononournation/Arduino_GFX
-///  - https://github.com/cnlohr/ch32v003fun/tree/master/examples/spi_oled
-///
-/// \copyright Attribution-NonCommercial-ShareAlike 4.0 (CC BY-NC-SA 4.0)
-
-#ifndef __ST7789_H__
-#define __ST7789_H__
-
+#pragma once
 #include <stdint.h>
 
-// Define screen resolution and offset
+// Display geometry (landscape)
 #define ST7789_WIDTH    240
 #define ST7789_HEIGHT   135
 #define ST7789_X_OFFSET 40
 #define ST7789_Y_OFFSET 53
-#define ST7735_WIDTH    240
-#define ST7735_HEIGHT   135
-#define ST7735_X_OFFSET 40
-#define ST7735_Y_OFFSET 53
-// Note: To not use CS, uncomment the following line and pull CS to ground.
-//  #define ST7789_NO_CS
 
-#define RGB565(r, g, b) ((((r)&0xF8) << 8) | (((g)&0xFC) << 3) | ((b) >> 3))
-#define BGR565(r, g, b) ((((b)&0xF8) << 8) | (((g)&0xFC) << 3) | ((r) >> 3))
+// Optional: pull CS low and define ST7789_NO_CS
+// #define ST7789_NO_CS
+
+#define RGB565(r, g, b) ((((r) & 0xF8) << 8) | (((g) & 0xFC) << 3) | ((b) >> 3))
+#define BGR565(r, g, b) ((((b) & 0xF8) << 8) | (((g) & 0xFC) << 3) | ((r) >> 3))
 #define RGB             RGB565
 
 #define BLACK       RGB(0, 0, 0)
@@ -55,84 +36,21 @@
 #define GREENYELLOW RGB(173, 255, 41)
 #define PINK        RGB(255, 130, 198)
 
-#define FONT_SCALE_8X8  1
+#define FONT_SCALE_8X8   1
 #define FONT_SCALE_16X16 2
-/// \brief Initialize ST7789
-void tft_init(void);
+#define FONT_SCALE_24X24 3
 
-/// \brief Set Cursor Position for Print Functions
-/// \param x X coordinate, from left to right.
-/// \param y Y coordinate, from top to bottom.
-void tft_set_cursor(uint16_t x, uint16_t y);
-
-/// \brief Set Text Color
-/// \param color Text color
-void tft_set_color(uint16_t color);
-
-/// \brief Set Text Background Color
-/// \param color Text background color
-void tft_set_background_color(uint16_t color);
-
-/// \brief Print a Character
-/// \param c Character to print
-//void tft_print_char(char c);
-void tft_print_char(char c, uint8_t scale = 1);
-/// \brief Print a String
-/// \param str String to print
-void tft_print(const char* str, uint8_t scale = 1);
-/// \brief Print an Integer
-/// \param num Number to print
-/// \param width Expected width of the number.
-/// Align left if it is less than the width of the number.
-/// Align right if it is greater than the width of the number.
-void tft_print_number(int32_t num, uint16_t width);
-
-/// \brief Draw a Pixel
-/// \param x X
-/// \param y Y
-/// \param color Pixel color
-void tft_draw_pixel(uint16_t x, uint16_t y, uint16_t color);
-
-/// \brief Draw a Line
-/// \param x0 Start X coordinate
-/// \param y0 Start Y coordinate
-/// \param x1 End X coordinate
-/// \param y1 End Y coordinate
-/// \param color Line color
-void tft_draw_line(int16_t x0, int16_t y0, int16_t x1, int16_t y1, uint16_t color);
-
-/// \brief Draw a Rectangle
-/// \param x Start X coordinate
-/// \param y Start Y coordinate
-/// \param width Width
-/// \param height Height
-/// \param color Rectangle Color
-void tft_draw_rect(uint16_t x, uint16_t y, uint16_t width, uint16_t height, uint16_t color);
-
-/// \brief Fill a Rectangle Area
-/// \param x Start X coordinate
-/// \param y Start Y coordinate
-/// \param width Width
-/// \param height Height
-/// \param color Fill Color
-void tft_fill_rect(uint16_t x, uint16_t y, uint16_t width, uint16_t height, uint16_t color);
-
-/// \brief Draw a Bitmap
-/// \param x Start X coordinate
-/// \param y Start Y coordinate
-/// \param width Width
-/// \param height Height
-/// \param bitmap Bitmap
-void tft_draw_bitmap(uint16_t x, uint16_t y, uint16_t width, uint16_t height, const uint8_t* bitmap);
-
-/// \brief Set vertical scroll area
-/// \param top_fixed Top fixed area in pixels
-/// \param scroll_height Scrollable area height in pixels
-/// \param bottom_fixed Bottom fixed area in pixels
-void tft_set_scroll_area(uint16_t top_fixed, uint16_t scroll_height, uint16_t bottom_fixed);
-
-/// \brief Set vertical scroll start address
-/// \param scroll_start Scroll start offset within scrollable area
-void tft_set_scroll_start(uint16_t scroll_start);
-
-#endif  // __ST7789_H__
+void st7789_init(void);
+void st7789_set_cursor(uint16_t x, uint16_t y);
+void st7789_set_color(uint16_t color);
+void st7789_set_background_color(uint16_t color);
+void st7789_print_char(char c, uint8_t scale);
+void st7789_print(const char* str, uint8_t scale);
+void st7789_print_number(int32_t num, uint16_t width);
+void st7789_draw_pixel(uint16_t x, uint16_t y, uint16_t color);
+void st7789_draw_line(int16_t x0, int16_t y0, int16_t x1, int16_t y1, uint16_t color);
+void st7789_draw_rect(uint16_t x, uint16_t y, uint16_t width, uint16_t height, uint16_t color);
+void st7789_fill_rect(uint16_t x, uint16_t y, uint16_t width, uint16_t height, uint16_t color);
+void st7789_draw_bitmap(uint16_t x, uint16_t y, uint16_t width, uint16_t height, const uint8_t* bitmap);
+void st7789_set_scroll_area(uint16_t top_fixed, uint16_t scroll_height, uint16_t bottom_fixed);
+void st7789_set_scroll_start(uint16_t scroll_start);

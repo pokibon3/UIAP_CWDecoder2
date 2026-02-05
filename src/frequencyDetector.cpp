@@ -88,9 +88,40 @@ int freqDetector(int8_t *vReal, int8_t *vImag)
 	tft_fill_rect(0, 0, TFT_WIDTH, TFT_HEIGHT, BLACK);
 	tft_draw_rect(0, 0, TFT_WIDTH, FFT_FRAME_HEIGHT, BLUE);
 
-	tft_set_cursor((TFT_WIDTH - (uint16_t)(strlen("0Hz      1KHz       2KHz") * 8)) / 2, FFT_LABEL_Y);
+	uint8_t  fft_bins = ((SAMPLES / 2) < 52) ? (SAMPLES / 2) : 52;
+	uint16_t bin_step = (TFT_WIDTH - 1) / fft_bins;
+	if (bin_step < 3) bin_step = 3;
+	uint16_t plot_width = bin_step * fft_bins;
+	if (plot_width > (TFT_WIDTH - 2)) {
+		plot_width = TFT_WIDTH - 2;
+	}
+	uint16_t plot_left = (TFT_WIDTH - plot_width) / 2;
+	uint16_t line1_x = plot_left + (plot_width * 2) / 5;
+	uint16_t line2_x = plot_left + (plot_width * 4) / 5;
+	uint16_t value_area_x = plot_left + (plot_width / 2);
+	uint16_t value_text_base = value_area_x + 2;
+
+	// Place labels near guide lines.
 	tft_set_color(BLUE);
-	tft_print("0Hz      1KHz       2KHz", FONT_SCALE_8X8);
+	const char* label0 = "0Hz";
+	const char* label1 = "1KHz";
+	const char* label2 = "2KHz";
+	const uint8_t label_char_w = TFT_FONT_ADV;
+	uint16_t label_w0 = (uint16_t)(strlen(label0) * label_char_w);
+	uint16_t label_w1 = (uint16_t)(strlen(label1) * label_char_w);
+	uint16_t label_w2 = (uint16_t)(strlen(label2) * label_char_w);
+	uint16_t x0 = (plot_left > (label_w0 / 2)) ? (plot_left - (label_w0 / 2)) : 0;
+	uint16_t x1 = (line1_x > (label_w1 / 2)) ? (line1_x - (label_w1 / 2)) : 0;
+	uint16_t x2 = (line2_x > (label_w2 / 2)) ? (line2_x - (label_w2 / 2)) : 0;
+	if (x0 + label_w0 > TFT_WIDTH) x0 = (uint16_t)(TFT_WIDTH - label_w0);
+	if (x1 + label_w1 > TFT_WIDTH) x1 = (uint16_t)(TFT_WIDTH - label_w1);
+	if (x2 + label_w2 > TFT_WIDTH) x2 = (uint16_t)(TFT_WIDTH - label_w2);
+	tft_set_cursor(x0, FFT_LABEL_Y);
+	tft_print(label0, FONT_SCALE_8X8);
+	tft_set_cursor(x1, FFT_LABEL_Y);
+	tft_print(label1, FONT_SCALE_8X8);
+	tft_set_cursor(x2, FFT_LABEL_Y);
+	tft_print(label2, FONT_SCALE_8X8);
 
 	while(1) {
 		uint16_t ave = 0;
@@ -125,25 +156,16 @@ TEST_LOW
 			vReal[i] = abs(vReal[i]) + abs(vImag[i]); // Magnitude calculation without sqrt
 			//vReal[i] = sqrt(vReal[i] * vReal[i] + vImag[i] * vImag[i]);
 		}
-		// draw FFT result
+		// draw FFT result (DMA scanline)
 		uint8_t maxIndex = 0;
 		uint8_t maxValue = 0;
-		uint8_t fft_bins = ((SAMPLES / 2) < 52) ? (SAMPLES / 2) : 52;
-		uint16_t bin_step = (TFT_WIDTH - 1) / fft_bins;
-		if (bin_step < 3) bin_step = 3;
-		uint16_t plot_width = bin_step * fft_bins;
-		if (plot_width > (TFT_WIDTH - 2)) {
-			plot_width = TFT_WIDTH - 2;
-		}
-		uint16_t plot_left = (TFT_WIDTH - plot_width) / 2;
-		uint16_t line1_x = plot_left + (plot_width * 2) / 5;
-		uint16_t line2_x = plot_left + (plot_width * 4) / 5;
-		uint16_t value_area_x = plot_left + (plot_width / 2);
-		uint16_t value_text_base = value_area_x + 2;
+		static uint8_t heights[TFT_WIDTH] = {0};
+		static uint8_t linebuf[TFT_WIDTH * 2] = {0};
+		const uint16_t line_width = (TFT_WIDTH > 2) ? (uint16_t)(TFT_WIDTH - 2) : 0;
+
+		for (uint16_t i = 0; i < TFT_WIDTH; i++) heights[i] = 0;
 
 		tft_fill_rect(1, FFT_AREA_Y_TOP, TFT_WIDTH - 2, FFT_AREA_HEIGHT, BLACK);
-		tft_draw_line(line1_x, 1, line1_x, FFT_FRAME_HEIGHT - 1, DARKBLUE); // 1.0kHz line
-		tft_draw_line(line2_x, 1, line2_x, FFT_FRAME_HEIGHT - 1, DARKBLUE); // 2.0kHz line
 
 		for (int i = 1; i < fft_bins; i++) {
 			int16_t val = vReal[i] * SCALE;
@@ -151,13 +173,32 @@ TEST_LOW
 			uint16_t x = plot_left + (i * bin_step);
 			uint16_t bar_width = (bin_step > 2) ? (bin_step - 1) : 1;
 			for (uint16_t dx = 0; dx < bar_width; dx++) {
-				tft_draw_line(x + dx, FFT_AREA_Y_BOTTOM, x + dx, FFT_AREA_Y_BOTTOM - val, WHITE);
+				uint16_t px = (uint16_t)(x + dx);
+				if (px < TFT_WIDTH) {
+					heights[px] = (uint8_t)val;
+				}
 			}
 			if (vReal[i] > maxValue) {
 				maxValue = vReal[i];
 				maxIndex = i;
 			}
 		}
+
+		for (uint16_t y = FFT_AREA_Y_TOP; y <= FFT_AREA_Y_BOTTOM; y++) {
+			uint16_t idx = 0;
+			uint16_t h = (uint16_t)(FFT_AREA_Y_BOTTOM - y);
+			for (uint16_t x = 1; x < TFT_WIDTH - 1; x++) {
+				uint16_t color = (heights[x] > h) ? WHITE : BLACK;
+				linebuf[idx++] = (uint8_t)(color >> 8);
+				linebuf[idx++] = (uint8_t)color;
+			}
+			if (line_width > 0) {
+				tft_draw_bitmap(1, y, line_width, 1, linebuf);
+			}
+		}
+
+		tft_draw_line(line1_x, 1, line1_x, FFT_FRAME_HEIGHT - 1, DARKBLUE); // 1.0kHz line
+		tft_draw_line(line2_x, 1, line2_x, FFT_FRAME_HEIGHT - 1, DARKBLUE); // 2.0kHz line
 		// disp freqeuncy
 		peakFrequency = (FD_SAMPLING_FREQUENCY / SAMPLES) * maxIndex;
 		if (peakFrequency != oldFreequency) {

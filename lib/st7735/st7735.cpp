@@ -1,642 +1,415 @@
-/// \brief ST7735 Driver for CH32V003
-///
-/// \author Li Mingjie
-///  - Email:  limingjie@outlook.com
-///  - GitHub: https://github.com/limingjie/
-///
-/// \date Aug 2023
-///
-/// \section References
-///  - https://github.com/moononournation/Arduino_GFX
-///  - https://gitee.com/morita/ch32-v003/tree/master/Driver
-///  - https://github.com/cnlohr/ch32v003fun/tree/master/examples/spi_oled
-///
-/// \copyright Attribution-NonCommercial-ShareAlike 4.0 (CC BY-NC-SA 4.0)
-
-#define TFT_CONFIG_ONLY
-#include "common.h"
-#undef TFT_CONFIG_ONLY
-
 #include "st7735.h"
-
-//#ifdef PLATFORMIO  // Use PlatformIO CH32V
-//    #include <debug.h>
-//#else  // Use ch32v003fun
-    #include "ch32v003fun.h"
-//#endif
-
-//#include "font5x7.h"
+#include "ch32v003fun.h"
 #include "fontk_8x8.h"
-// CH32V003 Pin Definitions
-#define PIN_RESET 7  // PC2  -> PC7
-#define PIN_DC    0  // PC3  -> PD0
-#ifndef ST7735_NO_CS
-    #define PIN_CS 3  // PC4 -> PC3
-#endif
-#define SPI_SCLK 5  // PC5
-#define SPI_MOSI 6  // PC6
+#include <stdbool.h>
 
-#define DATA_MODE()    (GPIOD->BSHR |= 1 << PIN_DC)  // DC High GPIOC -> GPIOD
-#define COMMAND_MODE() (GPIOD->BCR |= 1 << PIN_DC)   // DC Low  GPIOC -> GPIOD
+extern "C" int mini_snprintf(char* buffer, unsigned int buffer_len, const char *fmt, ...);
+
+// Pin mapping (CH32V003 -> ST7735)
+#define PIN_RESET 7  // PC7
+#define PIN_DC    0  // PD0
+#ifndef ST7735_NO_CS
+#define PIN_CS    3  // PC3
+#endif
+#define SPI_SCLK  5  // PC5
+#define SPI_MOSI  6  // PC6
+
+#define DATA_MODE()    (GPIOD->BSHR |= 1 << PIN_DC)
+#define COMMAND_MODE() (GPIOD->BCR |= 1 << PIN_DC)
 #define RESET_HIGH()   (GPIOC->BSHR |= 1 << PIN_RESET)
 #define RESET_LOW()    (GPIOC->BCR |= 1 << PIN_RESET)
 #ifndef ST7735_NO_CS
-    #define START_WRITE() (GPIOC->BCR |= 1 << PIN_CS)   // CS Low
-    #define END_WRITE()   (GPIOC->BSHR |= 1 << PIN_CS)  // CS High
+#define START_WRITE()  (GPIOC->BCR |= 1 << PIN_CS)
+#define END_WRITE()    (GPIOC->BSHR |= 1 << PIN_CS)
 #else
-    #define START_WRITE()
-    #define END_WRITE()
+#define START_WRITE()
+#define END_WRITE()
 #endif
 
-// PlatformIO Compatibility
-//#ifdef PLATFORMIO
-//    #define CTLR1_SPE_Set      ((uint16_t)0x0040)
-//    #define GPIO_CNF_OUT_PP    0x00
-//    #define GPIO_CNF_OUT_PP_AF 0x08
-//#endif
+// Delays (ms)
+#define ST7735_RST_DELAY     120
+#define ST7735_SLPOUT_DELAY  120
+#define ST7735_CMD_DELAY     10
 
-// ST7735 Datasheet
-// https://www.displayfuture.com/Display/datasheet/controller/ST7735.pdf
-// Delays
-#define ST7735_RST_DELAY     60   // delay ms wait for reset finish
-#define ST7735_SLPOUT_DELAY 120  // delay ms wait for sleep out finish
+// Commands
+#define ST7735_SWRESET 0x01
+#define ST7735_SLPOUT  0x11
+#define ST7735_DISPON  0x29
+#define ST7735_CASET   0x2A
+#define ST7735_RASET   0x2B
+#define ST7735_RAMWR   0x2C
+#define ST7735_MADCTL  0x36
+#define ST7735_COLMOD  0x3A
+#define ST7735_INVOFF  0x20
+#define ST7735_INVON   0x21
+#define ST7735_VSCRDEF 0x33
+#define ST7735_VSCRSADD 0x37
 
-// System Function Command List - Write Commands Only
-#define ST7735_SLPIN   0x10  // Sleep IN
-#define ST7735_SLPOUT  0x11  // Sleep Out
-#define ST7735_PTLON   0x12  // Partial Display Mode On
-#define ST7735_NORON   0x13  // Normal Display Mode On
-#define ST7735_INVOFF  0x20  // Display Inversion Off
-#define ST7735_INVON   0x21  // Display Inversion On
-#define ST7735_GAMSET  0x26  // Gamma Set
-#define ST7735_DISPOFF 0x28  // Display Off
-#define ST7735_DISPON  0x29  // Display On
-#define ST7735_CASET   0x2A  // Column Address Set
-#define ST7735_RASET   0x2B  // Row Address Set
-#define ST7735_RAMWR   0x2C  // Memory Write
-#define ST7735_PLTAR   0x30  // Partial Area
-#define ST7735_TEOFF   0x34  // Tearing Effect Line Off
-#define ST7735_TEON    0x35  // Tearing Effect Line On
-#define ST7735_MADCTL  0x36  // Memory Data Access Control
-#define ST7735_IDMOFF  0x38  // Idle Mode Off
-#define ST7735_IDMON   0x39  // Idle Mode On
-#define ST7735_COLMOD  0x3A  // Interface Pixel Format
+// MADCTL bits
+#define ST7735_MADCTL_RGB 0x00
+#define ST7735_MADCTL_BGR 0x08
+#define ST7735_MADCTL_MV  0x20
+#define ST7735_MADCTL_MX  0x40
+#define ST7735_MADCTL_MY  0x80
 
-// Panel Function Command List - Only Used
-#define ST7735_GMCTRP1 0xE0  // Gamma '+' polarity Correction Characteristics Setting
-#define ST7735_GMCTRN1 0xE1  // Gamma '-' polarity Correction Characteristics Setting
+#define ST7735_COLMOD_16_BPP 0x05
 
-// MADCTL Parameters
-#define ST7735_MADCTL_MH  0x04  // Bit 2 - Refresh Left to Right
-#define ST7735_MADCTL_RGB 0x00  // Bit 3 - RGB Order
-#define ST7735_MADCTL_BGR 0x08  // Bit 3 - BGR Order
-#define ST7735_MADCTL_ML  0x10  // Bit 4 - Scan Address Increase
-#define ST7735_MADCTL_MV  0x20  // Bit 5 - X-Y Exchange
-#define ST7735_MADCTL_MX  0x40  // Bit 6 - X-Mirror
-#define ST7735_MADCTL_MY  0x80  // Bit 7 - Y-Mirror
+#define FONT_WIDTH  5
+#define FONT_HEIGHT 7
 
-// COLMOD Parameter
-#define ST7735_COLMOD_16_BPP 0x05  // 101 - 16-bit/pixel
+static uint16_t cursor_x = 0;
+static uint16_t cursor_y = 0;
+static uint16_t fg_color = WHITE;
+static uint16_t bg_color = BLACK;
+static uint32_t dma_base_cfgr = 0;
 
-// 5x7 Font
-#define FONT_WIDTH  8  // Font width
-#define FONT_HEIGHT 8  // Font height
-
-static uint16_t _cursor_x                  = 0;
-static uint16_t _cursor_y                  = 0;      // Cursor position (x, y)
-static uint16_t _color                     = WHITE;  // Color
-static uint16_t _bg_color                  = BLACK;  // Background color
-//static uint8_t  _buffer[ST7735_WIDTH << 1] = {0};    // DMA buffer, long enough to fill a row.
-static uint8_t  _buffer[ST7735_WIDTH * 2] = {0};    // DMA buffer, long enough to fill a row.
-
-/// \brief Initialize ST7735
-/// \details Configure SPI, DMA, and RESET/DC/CS lines.
-static void SPI_init(void)
+static void dma_init(void)
 {
-    // Enable GPIO Port C, D, and SPI peripheral
+    RCC->AHBPCENR |= RCC_AHBPeriph_DMA1;
+    DMA1_Channel3->PADDR = (uint32_t)&SPI1->DATAR;
+
+    dma_base_cfgr = DMA_DIR_PeripheralDST
+                    | DMA_Mode_Normal
+                    | DMA_PeripheralInc_Disable
+                    | DMA_PeripheralDataSize_Byte
+                    | DMA_MemoryDataSize_Byte
+                    | DMA_Priority_VeryHigh
+                    | DMA_M2M_Disable;
+}
+
+static void spi_init(void)
+{
     RCC->APB2PCENR |= RCC_APB2Periph_GPIOC | RCC_APB2Periph_GPIOD | RCC_APB2Periph_SPI1;
 
-    // PC7 - RESET
     GPIOC->CFGLR &= ~(0xf << (PIN_RESET << 2));
     GPIOC->CFGLR |= (GPIO_CNF_OUT_PP | GPIO_Speed_50MHz) << (PIN_RESET << 2);
 
-    // PD0 - DC
     GPIOD->CFGLR &= ~(0xf << (PIN_DC << 2));
     GPIOD->CFGLR |= (GPIO_CNF_OUT_PP | GPIO_Speed_50MHz) << (PIN_DC << 2);
 
 #ifndef ST7735_NO_CS
-    // PC3 - CS
     GPIOC->CFGLR &= ~(0xf << (PIN_CS << 2));
     GPIOC->CFGLR |= (GPIO_CNF_OUT_PP | GPIO_Speed_50MHz) << (PIN_CS << 2);
 #endif
 
-    // PC5 - SCLK
     GPIOC->CFGLR &= ~(0xf << (SPI_SCLK << 2));
     GPIOC->CFGLR |= (GPIO_CNF_OUT_PP_AF | GPIO_Speed_50MHz) << (SPI_SCLK << 2);
 
-    // PC6 - MOSI
     GPIOC->CFGLR &= ~(0xf << (SPI_MOSI << 2));
     GPIOC->CFGLR |= (GPIO_CNF_OUT_PP_AF | GPIO_Speed_50MHz) << (SPI_MOSI << 2);
 
-    // Configure SPI
-    SPI1->CTLR1 = SPI_CPHA_1Edge             // Bit 0     - Clock PHAse
-                  | SPI_CPOL_Low             // Bit 1     - Clock POLarity - idles at the logical low voltage
-                  | SPI_Mode_Master          // Bit 2     - Master device
-                  | SPI_BaudRatePrescaler_2  // Bit 3-5   - F_HCLK / 2
-                  | SPI_FirstBit_MSB         // Bit 7     - MSB transmitted first
-                  | SPI_NSS_Soft             // Bit 9     - Software slave management
-                  | SPI_DataSize_8b          // Bit 11    - 8-bit data
-                  | SPI_Direction_1Line_Tx;  // Bit 14-15 - 1-line SPI, transmission only
-    SPI1->CRCR = 7;                          // CRC
-    SPI1->CTLR2 |= SPI_I2S_DMAReq_Tx;        // Configure SPI DMA Transfer
-    SPI1->CTLR1 |= CTLR1_SPE_Set;            // Bit 6     - Enable SPI
+    SPI1->CTLR1 = SPI_CPHA_1Edge
+                  | SPI_CPOL_Low
+                  | SPI_Mode_Master
+                  | SPI_BaudRatePrescaler_2
+                  | SPI_FirstBit_MSB
+                  | SPI_NSS_Soft
+                  | SPI_DataSize_8b
+                  | SPI_Direction_1Line_Tx;
+    SPI1->CTLR1 |= CTLR1_SPE_Set;
+    SPI1->CTLR2 |= SPI_I2S_DMAReq_Tx;
 
-    // Enable DMA peripheral
-    RCC->AHBPCENR |= RCC_AHBPeriph_DMA1;
-
-    // Config DMA for SPI TX
-    DMA1_Channel3->CFGR = DMA_DIR_PeripheralDST          // Bit 4     - Read from memory
-                          | DMA_Mode_Circular            // Bit 5     - Circulation mode
-                          | DMA_PeripheralInc_Disable    // Bit 6     - Peripheral address no change
-                          | DMA_MemoryInc_Enable         // Bit 7     - Increase memory address
-                          | DMA_PeripheralDataSize_Byte  // Bit 8-9   - 8-bit data
-                          | DMA_MemoryDataSize_Byte      // Bit 10-11 - 8-bit data
-                          | DMA_Priority_VeryHigh        // Bit 12-13 - Very high priority
-                          | DMA_M2M_Disable;             // Bit 14    - Disable memory to memory mode
-    DMA1_Channel3->PADDR = (uint32_t)&SPI1->DATAR;
+    dma_init();
 }
 
-/// \brief Send Data Through SPI via DMA
-/// \param buffer Memory address
-/// \param size Memory size
-/// \param repeat Repeat times
-static void SPI_send_DMA(const uint8_t* buffer, uint16_t size, uint16_t repeat)
+static inline void spi_write(uint8_t data)
 {
-    DMA1_Channel3->MADDR = (uint32_t)buffer;
-    DMA1_Channel3->CNTR  = size;
-    DMA1_Channel3->CFGR |= DMA_CFGR1_EN;  // Turn on channel
-
-    // Circulate the buffer
-    while (repeat--)
-    {
-        // Clear flag, start sending?
-        DMA1->INTFCR = DMA1_FLAG_TC3;
-
-        // Waiting for channel 3 transmission complete
-        while (!(DMA1->INTFR & DMA1_FLAG_TC3))
-            ;
-    }
-
-    DMA1_Channel3->CFGR &= ~DMA_CFGR1_EN;  // Turn off channel
-}
-
-/// \brief Send Data Directly Through SPI
-/// \param data 8-bit data
-static void SPI_send(uint8_t data)
-{
-    // Send byte
     SPI1->DATAR = data;
-
-    // Waiting for transmission complete
     while (!(SPI1->STATR & SPI_STATR_TXE))
+        ;
+    while (SPI1->STATR & SPI_STATR_BSY)
         ;
 }
 
-/// \brief Send 8-Bit Command
-/// \param cmd 8-bit command
-static void write_command_8(uint8_t cmd)
+static void spi_write_dma(const uint8_t* data, uint32_t length, bool mem_inc)
+{
+    while (length > 0)
+    {
+        uint16_t chunk = (length > 0xFFFFu) ? 0xFFFFu : (uint16_t)length;
+        uint32_t cfgr = dma_base_cfgr | (mem_inc ? DMA_MemoryInc_Enable : DMA_MemoryInc_Disable);
+
+        DMA1_Channel3->CFGR &= ~DMA_CFGR1_EN;
+        DMA1_Channel3->MADDR = (uint32_t)data;
+        DMA1_Channel3->CNTR = chunk;
+        DMA1->INTFCR = DMA1_FLAG_TC3;
+        DMA1_Channel3->CFGR = cfgr | DMA_CFGR1_EN;
+
+        while (!(DMA1->INTFR & DMA1_FLAG_TC3))
+            ;
+
+        DMA1_Channel3->CFGR &= ~DMA_CFGR1_EN;
+        while (SPI1->STATR & SPI_STATR_BSY)
+            ;
+
+        if (mem_inc)
+            data += chunk;
+        length -= chunk;
+    }
+}
+
+static inline void tft_write_cmd(uint8_t cmd)
 {
     COMMAND_MODE();
-    SPI_send(cmd);
+    spi_write(cmd);
 }
 
-/// \brief Send 8-Bit Data
-/// \param cmd 8-bit data
-static void write_data_8(uint8_t data)
+static inline void tft_write_data(uint8_t data)
 {
     DATA_MODE();
-    SPI_send(data);
+    spi_write(data);
 }
 
-/// \brief Send 16-Bit Data
-/// \param cmd 16-bit data
-static void write_data_16(uint16_t data)
+static inline void tft_write_data16(uint16_t data)
 {
     DATA_MODE();
-    SPI_send(data >> 8);
-    SPI_send(data);
+    spi_write((uint8_t)(data >> 8));
+    spi_write((uint8_t)data);
 }
 
-/// \brief Initialize ST7735
-/// \details Initialization sequence from Arduino_GFX
-/// https://github.com/moononournation/Arduino_GFX/blob/master/src/display/Arduino_ST7735.h
-void tft_init(void)
+static inline uint16_t apply_x(uint16_t x)
 {
-    SPI_init();
-    // Reset display
+    return (uint16_t)(x + ST7735_X_OFFSET);
+}
+
+static inline uint16_t apply_y(uint16_t y)
+{
+    return (uint16_t)(y + ST7735_Y_OFFSET);
+}
+
+static void tft_set_window(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1)
+{
+    tft_write_cmd(ST7735_CASET);
+    tft_write_data16(x0);
+    tft_write_data16(x1);
+    tft_write_cmd(ST7735_RASET);
+    tft_write_data16(y0);
+    tft_write_data16(y1);
+    tft_write_cmd(ST7735_RAMWR);
+}
+
+void st7735_init(void)
+{
+    spi_init();
+
+    RESET_HIGH();
+    Delay_Ms(1);
     RESET_LOW();
-    Delay_Ms(ST7735_RST_DELAY);
+    Delay_Ms(1);
     RESET_HIGH();
     Delay_Ms(ST7735_RST_DELAY);
 
     START_WRITE();
-    // Out of sleep mode, no args, w/delay
-    write_command_8(ST7735_SLPOUT);
+
+    tft_write_cmd(ST7735_SWRESET);
+    Delay_Ms(ST7735_CMD_DELAY);
+
+    tft_write_cmd(ST7735_SLPOUT);
     Delay_Ms(ST7735_SLPOUT_DELAY);
- 
-    // Set rotation
-    write_command_8(ST7735_MADCTL);
-    //write_data_8(ST7735_MADCTL_MY | ST7735_MADCTL_MV | ST7735_MADCTL_BGR);  // 0 - Horizontal
-    //write_data_8(ST7735_MADCTL_BGR);                                        // 1 - Vertical
-    write_data_8(ST7735_MADCTL_MX | ST7735_MADCTL_MV | ST7735_MADCTL_BGR);  // 2 - Horizontal
-    //write_data_8(ST7735_MADCTL_MX | ST7735_MADCTL_MY | ST7735_MADCTL_BGR);  // 3 - Vertical
 
-    // Set Interface Pixel Format - 16-bit/pixel
-    write_command_8(ST7735_COLMOD);
-    write_data_8(ST7735_COLMOD_16_BPP);
+    tft_write_cmd(ST7735_COLMOD);
+    tft_write_data(ST7735_COLMOD_16_BPP);
+    Delay_Ms(ST7735_CMD_DELAY);
 
-    // Gamma Adjustments (pos. polarity), 16 args.
-    // (Not entirely necessary, but provides accurate colors)
-    uint8_t gamma_p[] = {0x09, 0x16, 0x09, 0x20, 0x21, 0x1B, 0x13, 0x19,
-                         0x17, 0x15, 0x1E, 0x2B, 0x04, 0x05, 0x02, 0x0E};
-    write_command_8(ST7735_GMCTRP1);
-    DATA_MODE();
-    SPI_send_DMA(gamma_p, 16, 1);
-    Delay_Ms(10);
-    // Gamma Adjustments (neg. polarity), 16 args.
-    // (Not entirely necessary, but provides accurate colors)
-    uint8_t gamma_n[] = {0x0B, 0x14, 0x08, 0x1E, 0x22, 0x1D, 0x18, 0x1E,
-                         0x1B, 0x1A, 0x24, 0x2B, 0x06, 0x06, 0x02, 0x0F};
-    write_command_8(ST7735_GMCTRN1);
-    DATA_MODE();
-    SPI_send_DMA(gamma_n, 16, 1);
+    tft_write_cmd(ST7735_MADCTL);
+    tft_write_data((uint8_t)(ST7735_MADCTL_MX | ST7735_MADCTL_MV | ST7735_MADCTL_BGR));
+    Delay_Ms(ST7735_CMD_DELAY);
 
-    Delay_Ms(10);
+    tft_write_cmd(ST7735_INVOFF);
+    Delay_Ms(ST7735_CMD_DELAY);
 
-    // Invert display
-    //write_command_8(ST7735_INVON);
-    write_command_8(ST7735_INVOFF);
-
-    // Normal display on, no args, w/delay
-    write_command_8(ST7735_NORON);
-    Delay_Ms(10);
-
-    // Main screen turn on, no args, w/delay
-    write_command_8(ST7735_DISPON);
-    Delay_Ms(10);
+    tft_write_cmd(ST7735_DISPON);
+    Delay_Ms(ST7735_CMD_DELAY);
 
     END_WRITE();
 }
 
-/// \brief Set Cursor Position for Print Functions
-/// \param x X coordinate, from left to right.
-/// \param y Y coordinate, from top to bottom.
-/// \details Calculate offset and set to `_cursor_x` and `_cursor_y` variables
-void tft_set_cursor(uint16_t x, uint16_t y)
+void st7735_set_cursor(uint16_t x, uint16_t y)
 {
-    _cursor_x = x + ST7735_X_OFFSET;
-    _cursor_y = y + ST7735_Y_OFFSET;
+    cursor_x = x;
+    cursor_y = y;
 }
 
-/// \brief Set Text Color
-/// \param color Text color
-/// \details Set to `_color` variable
-void tft_set_color(uint16_t color)
+void st7735_set_color(uint16_t color)
 {
-    _color = color;
+    fg_color = color;
 }
 
-/// \brief Set Text Background Color
-/// \param color Text background color
-/// \details Set to `_bg_color` variable
-void tft_set_background_color(uint16_t color)
+void st7735_set_background_color(uint16_t color)
 {
-    _bg_color = color;
+    bg_color = color;
 }
 
-/// \brief Set Memory Write Window
-/// \param x0 Start column
-/// \param y0 Start row
-/// \param x1 End column
-/// \param y1 End row
-static void tft_set_window(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1)
+void st7735_print_char(char c, uint8_t scale)
 {
-    write_command_8(ST7735_CASET);
-    write_data_16(x0);
-    write_data_16(x1);
-    write_command_8(ST7735_RASET);
-    write_data_16(y0);
-    write_data_16(y1);
-    write_command_8(ST7735_RAMWR);
-}
+    if (scale < 1) scale = 1;
+    if (scale > 2) scale = 2;
 
-/// \brief Print a Character
-/// \param c Character to print
-/// \details DMA accelerated.
-// _buffer は (FONT_WIDTH * FONT_HEIGHT * font_scale * font_scale * 2) バイト以上必要
-// 例: 最大2倍なら 8*8*2*2*2 = 512 バイト
-void tft_print_char(char c, uint8_t font_scale)
-{
-    if (font_scale < 1) font_scale = 1;
-    if (font_scale > 2) font_scale = 2;
+    const uint8_t* glyph = &font[((uint8_t)c) << 3];
+    const uint16_t w = (uint16_t)(FONT_WIDTH * scale);
+    const uint16_t h = (uint16_t)(FONT_HEIGHT * scale);
 
-    const uint8_t* start = &font[((uint8_t)c) << 3]; // 8bytes/char
-    const uint8_t s = font_scale;
-
-    const uint16_t out_w = FONT_WIDTH  * s; // 8 or 16
+    const uint16_t x0 = apply_x(cursor_x);
+    const uint16_t y0 = apply_y(cursor_y);
 
     START_WRITE();
-    for (uint8_t i = 0; i < FONT_HEIGHT; i++)
+    tft_set_window(x0, y0, (uint16_t)(x0 + w - 1), (uint16_t)(y0 + h - 1));
+
+    for (uint8_t row = 0; row < FONT_HEIGHT; row++)
     {
-        const uint8_t colbits = (uint8_t)(1U << i);
-        for (uint8_t sy = 0; sy < s; sy++)
+        for (uint8_t sy = 0; sy < scale; sy++)
         {
-            uint16_t sz = 0;
-            for (uint8_t j = 0; j < FONT_WIDTH; j++)
+            for (uint8_t col = 0; col < FONT_WIDTH; col++)
             {
-                const uint8_t on = (start[j] & colbits) ? 1 : 0;
-                const uint16_t color = on ? _color : _bg_color;
-                for (uint8_t sx = 0; sx < s; sx++)
+                const uint8_t bits = glyph[col];
+                const uint16_t color = (bits & (uint8_t)(1U << row)) ? fg_color : bg_color;
+                for (uint8_t sx = 0; sx < scale; sx++)
                 {
-                    _buffer[sz++] = (uint8_t)(color >> 8);
-                    _buffer[sz++] = (uint8_t)(color & 0xFF);
+                    tft_write_data16(color);
                 }
             }
-            tft_set_window(_cursor_x, _cursor_y + (i * s + sy),
-                           _cursor_x + out_w - 1, _cursor_y + (i * s + sy));
-            DATA_MODE();
-            SPI_send_DMA(_buffer, sz, 1);
         }
     }
-    END_WRITE();
 
-    // _cursor_x += out_w;
+    END_WRITE();
 }
 
-/// \brief Print a String
-/// \param str String to print
-void tft_print(const char* str, uint8_t scale)
+void st7735_print(const char* str, uint8_t scale)
 {
+    if (!str)
+        return;
+
     while (*str)
     {
-        tft_print_char(*str++, scale);
-        _cursor_x += (FONT_WIDTH - 2) * scale;
+        st7735_print_char(*str++, scale);
+        cursor_x = (uint16_t)(cursor_x + ((FONT_WIDTH + 1) * scale));
     }
 }
 
-/// \brief Print an Integer
-/// \param num Number to print
-/// \param width Expected width of the number.
-/// Align left if it is less than the width of the number.
-/// Align right if it is greater than the width of the number.
-void tft_print_number(int32_t num, uint16_t width)
+void st7735_print_number(int32_t num, uint16_t width)
 {
-    static char str[12];
-    uint8_t     position  = 11;
-    uint8_t     negative  = 0;
-    uint16_t    num_width = 0;
-
-    // Handle negative number
-    if (num < 0)
-    {
-        negative = 1;
-        num      = -num;
-    }
-
-    str[position] = '\0';  // End of the string.
-    while (num)
-    {
-        str[--position] = num % 10 + '0';
-        num /= 10;
-    }
-
-    if (position == 11)
-    {
-        str[--position] = '0';
-    }
-
-    if (negative)
-    {
-        str[--position] = '-';
-    }
-
-    // Calculate alignment
-    num_width = (11 - position) * (FONT_WIDTH + 1) - 1;
-    if (width > num_width)
-    {
-        _cursor_x += width - num_width;
-    }
-
-    tft_print(&str[position]);
+    char buf[16];
+    mini_snprintf(buf, sizeof(buf), "%*ld", (int)width, (long)num);
+    st7735_print(buf, 1);
 }
 
-/// \brief Draw a Pixel
-/// \param x X
-/// \param y Y
-/// \param color Pixel color
-/// \details SPI direct write
-void tft_draw_pixel(uint16_t x, uint16_t y, uint16_t color)
+void st7735_draw_pixel(uint16_t x, uint16_t y, uint16_t color)
 {
-    x += ST7735_X_OFFSET;
-    y += ST7735_Y_OFFSET;
+    const uint16_t xx = apply_x(x);
+    const uint16_t yy = apply_y(y);
+
     START_WRITE();
-    tft_set_window(x, y, x, y);
-    write_data_16(color);
+    tft_set_window(xx, yy, xx, yy);
+    tft_write_data16(color);
     END_WRITE();
 }
 
-/// \brief Fill a Rectangle Area
-/// \param x Start X coordinate
-/// \param y Start Y coordinate
-/// \param width Width
-/// \param height Height
-/// \param color Fill Color
-/// \details DMA accelerated.
-void tft_fill_rect(uint16_t x, uint16_t y, uint16_t width, uint16_t height, uint16_t color)
+void st7735_fill_rect(uint16_t x, uint16_t y, uint16_t width, uint16_t height, uint16_t color)
 {
-    x += ST7735_X_OFFSET;
-    y += ST7735_Y_OFFSET;
+    if (width == 0 || height == 0)
+        return;
 
-    uint16_t sz = 0;
-    for (uint16_t x = 0; x < width; x++)
-    {
-        _buffer[sz++] = color >> 8;
-        _buffer[sz++] = color;
-    }
+    const uint16_t x0 = apply_x(x);
+    const uint16_t y0 = apply_y(y);
+    const uint16_t x1 = (uint16_t)(x0 + width - 1);
+    const uint16_t y1 = (uint16_t)(y0 + height - 1);
 
     START_WRITE();
-    tft_set_window(x, y, x + width - 1, y + height - 1);
+    tft_set_window(x0, y0, x1, y1);
     DATA_MODE();
-    SPI_send_DMA(_buffer, sz, height);
+
+    static uint8_t linebuf[128];
+    for (uint16_t i = 0; i < sizeof(linebuf); i += 2)
+    {
+        linebuf[i] = (uint8_t)(color >> 8);
+        linebuf[i + 1] = (uint8_t)color;
+    }
+
+    uint32_t remaining = (uint32_t)width * (uint32_t)height * 2U;
+    while (remaining > 0)
+    {
+        uint32_t chunk = (remaining > sizeof(linebuf)) ? sizeof(linebuf) : remaining;
+        spi_write_dma(linebuf, chunk, false);
+        remaining -= chunk;
+    }
+
     END_WRITE();
 }
 
-/// \brief Draw a Bitmap
-/// \param x Start X coordinate
-/// \param y Start Y coordinate
-/// \param width Width
-/// \param height Height
-/// \param bitmap Bitmap
-void tft_draw_bitmap(uint16_t x, uint16_t y, uint16_t width, uint16_t height, const uint8_t* bitmap)
+void st7735_draw_rect(uint16_t x, uint16_t y, uint16_t width, uint16_t height, uint16_t color)
 {
-    x += ST7735_X_OFFSET;
-    y += ST7735_Y_OFFSET;
+    if (width == 0 || height == 0)
+        return;
+
+    st7735_draw_line((int16_t)x, (int16_t)y, (int16_t)(x + width - 1), (int16_t)y, color);
+    st7735_draw_line((int16_t)x, (int16_t)(y + height - 1), (int16_t)(x + width - 1), (int16_t)(y + height - 1), color);
+    st7735_draw_line((int16_t)x, (int16_t)y, (int16_t)x, (int16_t)(y + height - 1), color);
+    st7735_draw_line((int16_t)(x + width - 1), (int16_t)y, (int16_t)(x + width - 1), (int16_t)(y + height - 1), color);
+}
+
+void st7735_draw_line(int16_t x0, int16_t y0, int16_t x1, int16_t y1, uint16_t color)
+{
+    int16_t dx = (int16_t)((x1 > x0) ? (x1 - x0) : (x0 - x1));
+    int16_t sx = (x0 < x1) ? 1 : -1;
+    int16_t dy = (int16_t)((y1 > y0) ? (y0 - y1) : (y1 - y0));
+    int16_t sy = (y0 < y1) ? 1 : -1;
+    int16_t err = (int16_t)(dx + dy);
+
+    while (1)
+    {
+        if (x0 >= 0 && y0 >= 0)
+        {
+            st7735_draw_pixel((uint16_t)x0, (uint16_t)y0, color);
+        }
+        if (x0 == x1 && y0 == y1)
+            break;
+        int16_t e2 = (int16_t)(2 * err);
+        if (e2 >= dy)
+        {
+            err = (int16_t)(err + dy);
+            x0 = (int16_t)(x0 + sx);
+        }
+        if (e2 <= dx)
+        {
+            err = (int16_t)(err + dx);
+            y0 = (int16_t)(y0 + sy);
+        }
+    }
+}
+
+void st7735_draw_bitmap(uint16_t x, uint16_t y, uint16_t width, uint16_t height, const uint8_t* bitmap)
+{
+    if (!bitmap || width == 0 || height == 0)
+        return;
+
+    const uint16_t x0 = apply_x(x);
+    const uint16_t y0 = apply_y(y);
+    const uint16_t x1 = (uint16_t)(x0 + width - 1);
+    const uint16_t y1 = (uint16_t)(y0 + height - 1);
+
     START_WRITE();
-    tft_set_window(x, y, x + width - 1, y + height - 1);
+    tft_set_window(x0, y0, x1, y1);
     DATA_MODE();
-    SPI_send_DMA(bitmap, width * height << 1, 1);
+
+    const uint32_t count = (uint32_t)width * (uint32_t)height * 2U;
+    spi_write_dma(bitmap, count, true);
+
     END_WRITE();
 }
 
-/// \brief Draw a Vertical Line Fast
-/// \param x0 Start X coordinate
-/// \param y0 Start Y coordinate
-/// \param x1 End X coordinate
-/// \param y1 End Y coordinate
-/// \param color Line color
-/// \details DMA accelerated
-static void _tft_draw_fast_v_line(int16_t x, int16_t y, int16_t h, uint16_t color)
+void st7735_set_scroll_area(uint16_t top_fixed, uint16_t scroll_height, uint16_t bottom_fixed)
 {
-    x += ST7735_X_OFFSET;
-    y += ST7735_Y_OFFSET;
-
-    uint16_t sz = 0;
-    for (int16_t j = 0; j < h; j++)
-    {
-        _buffer[sz++] = color >> 8;
-        _buffer[sz++] = color;
-    }
-
     START_WRITE();
-    tft_set_window(x, y, x, y + h - 1);
-    DATA_MODE();
-    SPI_send_DMA(_buffer, sz, 1);
+    tft_write_cmd(ST7735_VSCRDEF);
+    tft_write_data16(top_fixed);
+    tft_write_data16(scroll_height);
+    tft_write_data16(bottom_fixed);
     END_WRITE();
 }
 
-/// \brief Draw a Horizontal Line Fast
-/// \param x0 Start X coordinate
-/// \param y0 Start Y coordinate
-/// \param x1 End X coordinate
-/// \param y1 End Y coordinate
-/// \param color Line color
-/// \details DMA accelerated
-static void _tft_draw_fast_h_line(int16_t x, int16_t y, int16_t w, uint16_t color)
+void st7735_set_scroll_start(uint16_t scroll_start)
 {
-    x += ST7735_X_OFFSET;
-    y += ST7735_Y_OFFSET;
-
-    uint16_t sz = 0;
-    for (int16_t j = 0; j < w; j++)
-    {
-        _buffer[sz++] = color >> 8;
-        _buffer[sz++] = color;
-    }
-
     START_WRITE();
-    tft_set_window(x, y, x + w - 1, y);
-    DATA_MODE();
-    SPI_send_DMA(_buffer, sz, 1);
+    tft_write_cmd(ST7735_VSCRSADD);
+    tft_write_data16(scroll_start);
     END_WRITE();
-}
-
-// Draw line helpers
-#define _diff(a, b) ((a > b) ? (a - b) : (b - a))
-#define _swap_int16_t(a, b) \
-    {                       \
-        int16_t t = a;      \
-        a         = b;      \
-        b         = t;      \
-    }
-
-/// \brief Bresenham's line algorithm from Arduino GFX
-/// https://github.com/moononournation/Arduino_GFX/blob/master/src/Arduino_GFX.cpp
-/// \param x0 Start X coordinate
-/// \param y0 Start Y coordinate
-/// \param x1 End X coordinate
-/// \param y1 End Y coordinate
-/// \param color Line color
-/// \details SPI direct write
-static void _tft_draw_line_bresenham(int16_t x0, int16_t y0, int16_t x1, int16_t y1, uint16_t color)
-{
-    uint8_t steep = _diff(y1, y0) > _diff(x1, x0);
-    if (steep)
-    {
-        _swap_int16_t(x0, y0);
-        _swap_int16_t(x1, y1);
-    }
-
-    if (x0 > x1)
-    {
-        _swap_int16_t(x0, x1);
-        _swap_int16_t(y0, y1);
-    }
-
-    int16_t dx   = x1 - x0;
-    int16_t dy   = _diff(y1, y0);
-    int16_t err  = dx >> 1;
-    int16_t step = (y0 < y1) ? 1 : -1;
-
-    for (; x0 <= x1; x0++)
-    {
-        if (steep)
-        {
-            tft_draw_pixel(y0, x0, color);
-        }
-        else
-        {
-            tft_draw_pixel(x0, y0, color);
-        }
-        err -= dy;
-        if (err < 0)
-        {
-            err += dx;
-            y0 += step;
-        }
-    }
-}
-
-/// \brief Draw a Rectangle
-/// \param x0 Start X coordinate
-/// \param y0 Start Y coordinate
-/// \param x1 End X coordinate
-/// \param y1 End Y coordinate
-/// \param color Line color
-void tft_draw_rect(uint16_t x, uint16_t y, uint16_t width, uint16_t height, uint16_t color)
-{
-    _tft_draw_fast_h_line(x, y, width, color);
-    _tft_draw_fast_h_line(x, y + height - 1, width, color);
-    _tft_draw_fast_v_line(x, y, height, color);
-    _tft_draw_fast_v_line(x + width - 1, y, height, color);
-}
-
-/// \brief Draw Line Function from Arduino GFX
-/// https://github.com/moononournation/Arduino_GFX/blob/master/src/Arduino_GFX.cpp
-/// \param x0 Start X coordinate
-/// \param y0 Start Y coordinate
-/// \param x1 End X coordinate
-/// \param y1 End Y coordinate
-/// \param color Line color
-void tft_draw_line(int16_t x0, int16_t y0, int16_t x1, int16_t y1, uint16_t color)
-{
-    if (x0 == x1)
-    {
-        if (y0 > y1)
-        {
-            _swap_int16_t(y0, y1);
-        }
-        _tft_draw_fast_v_line(x0, y0, y1 - y0 + 1, color);
-    }
-    else if (y0 == y1)
-    {
-        if (x0 > x1)
-        {
-            _swap_int16_t(x0, x1);
-        }
-        _tft_draw_fast_h_line(x0, y0, x1 - x0 + 1, color);
-    }
-    else
-    {
-        _tft_draw_line_bresenham(x0, y0, x1, y1, color);
-    }
 }
