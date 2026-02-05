@@ -33,7 +33,7 @@
 //  2024.08.21 integer version
 //  2025.09.30 port to UIAPduino Pro Micro(CH32V003)
 //  2025.10.04 add freq detector
-//  2025.11.07 first release Version 1.0
+//  2026.02.05 Version 1.5
 //
 //  Hardware Connections
 //
