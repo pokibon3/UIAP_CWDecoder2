@@ -34,6 +34,9 @@
 #define tft_draw_bitmap st7735_draw_bitmap
 #define TFT_WIDTH  ST7735_WIDTH
 #define TFT_HEIGHT ST7735_HEIGHT
+#define TFT_FONT_W 5
+#define TFT_FONT_H 7
+#define TFT_FONT_ADV 6
 #elif defined(TFT_ST7789)
 #include "st7789.h"
 #define tft_init st7789_init
@@ -50,6 +53,9 @@
 #define tft_draw_bitmap st7789_draw_bitmap
 #define TFT_WIDTH  ST7789_WIDTH
 #define TFT_HEIGHT ST7789_HEIGHT
+#define TFT_FONT_W 5
+#define TFT_FONT_H 7
+#define TFT_FONT_ADV 6
 #else
 #error "Define TFT_ST7735 or TFT_ST7789."
 #endif

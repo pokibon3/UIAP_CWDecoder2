@@ -1,7 +1,9 @@
 #include "st7789.h"
 #include "ch32v003fun.h"
 #include "fontk_8x8.h"
-#include "common.h"
+#include <stdbool.h>
+
+extern "C" int mini_snprintf(char* buffer, unsigned int buffer_len, const char *fmt, ...);
 
 // Pin mapping (CH32V003 -> ST7789)
 #define PIN_RESET 7  // PC7
@@ -58,6 +60,21 @@ static uint16_t cursor_x = 0;
 static uint16_t cursor_y = 0;
 static uint16_t fg_color = WHITE;
 static uint16_t bg_color = BLACK;
+static uint32_t dma_base_cfgr = 0;
+
+static void dma_init(void)
+{
+    RCC->AHBPCENR |= RCC_AHBPeriph_DMA1;
+    DMA1_Channel3->PADDR = (uint32_t)&SPI1->DATAR;
+
+    dma_base_cfgr = DMA_DIR_PeripheralDST
+                    | DMA_Mode_Normal
+                    | DMA_PeripheralInc_Disable
+                    | DMA_PeripheralDataSize_Byte
+                    | DMA_MemoryDataSize_Byte
+                    | DMA_Priority_VeryHigh
+                    | DMA_M2M_Disable;
+}
 
 static void spi_init(void)
 {
@@ -89,6 +106,9 @@ static void spi_init(void)
                   | SPI_DataSize_8b
                   | SPI_Direction_1Line_Tx;
     SPI1->CTLR1 |= CTLR1_SPE_Set;
+    SPI1->CTLR2 |= SPI_I2S_DMAReq_Tx;
+
+    dma_init();
 }
 
 static inline void spi_write(uint8_t data)
@@ -98,6 +118,32 @@ static inline void spi_write(uint8_t data)
         ;
     while (SPI1->STATR & SPI_STATR_BSY)
         ;
+}
+
+static void spi_write_dma(const uint8_t* data, uint32_t length, bool mem_inc)
+{
+    while (length > 0)
+    {
+        uint16_t chunk = (length > 0xFFFFu) ? 0xFFFFu : (uint16_t)length;
+        uint32_t cfgr = dma_base_cfgr | (mem_inc ? DMA_MemoryInc_Enable : DMA_MemoryInc_Disable);
+
+        DMA1_Channel3->CFGR &= ~DMA_CFGR1_EN;
+        DMA1_Channel3->MADDR = (uint32_t)data;
+        DMA1_Channel3->CNTR = chunk;
+        DMA1->INTFCR = DMA1_FLAG_TC3;
+        DMA1_Channel3->CFGR = cfgr | DMA_CFGR1_EN;
+
+        while (!(DMA1->INTFR & DMA1_FLAG_TC3))
+            ;
+
+        DMA1_Channel3->CFGR &= ~DMA_CFGR1_EN;
+        while (SPI1->STATR & SPI_STATR_BSY)
+            ;
+
+        if (mem_inc)
+            data += chunk;
+        length -= chunk;
+    }
 }
 
 static inline void tft_write_cmd(uint8_t cmd)
@@ -234,7 +280,7 @@ void st7789_print(const char* str, uint8_t scale)
     while (*str)
     {
         st7789_print_char(*str++, scale);
-        cursor_x = (uint16_t)(cursor_x + (FONT_WIDTH * scale));
+        cursor_x = (uint16_t)(cursor_x + ((FONT_WIDTH + 1) * scale));
     }
 }
 
@@ -268,11 +314,21 @@ void st7789_fill_rect(uint16_t x, uint16_t y, uint16_t width, uint16_t height, u
 
     START_WRITE();
     tft_set_window(x0, y0, x1, y1);
+    DATA_MODE();
 
-    const uint32_t count = (uint32_t)width * (uint32_t)height;
-    for (uint32_t i = 0; i < count; i++)
+    static uint8_t linebuf[128];
+    for (uint16_t i = 0; i < sizeof(linebuf); i += 2)
     {
-        tft_write_data16(color);
+        linebuf[i] = (uint8_t)(color >> 8);
+        linebuf[i + 1] = (uint8_t)color;
+    }
+
+    uint32_t remaining = (uint32_t)width * (uint32_t)height * 2U;
+    while (remaining > 0)
+    {
+        uint32_t chunk = (remaining > sizeof(linebuf)) ? sizeof(linebuf) : remaining;
+        spi_write_dma(linebuf, chunk, false);
+        remaining -= chunk;
     }
 
     END_WRITE();
@@ -331,12 +387,10 @@ void st7789_draw_bitmap(uint16_t x, uint16_t y, uint16_t width, uint16_t height,
 
     START_WRITE();
     tft_set_window(x0, y0, x1, y1);
+    DATA_MODE();
 
     const uint32_t count = (uint32_t)width * (uint32_t)height * 2U;
-    for (uint32_t i = 0; i < count; i++)
-    {
-        tft_write_data(bitmap[i]);
-    }
+    spi_write_dma(bitmap, count, true);
 
     END_WRITE();
 }

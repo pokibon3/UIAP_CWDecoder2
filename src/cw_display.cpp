@@ -185,18 +185,21 @@ void cw_display_setup(void)
 		if ((uint8_t)strlen(title3) > max_title_len) max_title_len = (uint8_t)strlen(title3);
 		if (max_title_len == 0) max_title_len = 1;
 
-		title_scale_w = (uint8_t)(TFT_WIDTH / (max_title_len * 5));
+		title_scale_w = (uint8_t)(TFT_WIDTH / (max_title_len * TFT_FONT_ADV));
 		if (title_scale_w < 1) title_scale_w = 1;
 		if (title_scale_w > 3) title_scale_w = 3;
 
-		title_scale_h = (uint8_t)((TFT_HEIGHT - (title_gap * 2)) / (8 * 3));
+		title_scale_h = (uint8_t)((TFT_HEIGHT - (title_gap * 2)) / (TFT_FONT_H * 3));
 		if (title_scale_h < 1) title_scale_h = 1;
 		if (title_scale_h > 3) title_scale_h = 3;
 
 		title_scale = (title_scale_w < title_scale_h) ? title_scale_w : title_scale_h;
 		if (title_scale < 3) title_scale++;
-		title_char_w = (uint8_t)(5 * title_scale);
-		title_char_h = (uint8_t)(8 * title_scale);
+#if defined(TFT_ST7735)
+		if (title_scale > 1) title_scale--;
+#endif
+		title_char_w = (uint8_t)(TFT_FONT_ADV * title_scale);
+		title_char_h = (uint8_t)(TFT_FONT_H * title_scale);
 		title_block_h = (uint16_t)(title_char_h * 3 + title_gap * 2);
 		title_top = (TFT_HEIGHT > title_block_h) ? (uint16_t)((TFT_HEIGHT - title_block_h) / 2) : 0;
 		title_y1 = title_top;
