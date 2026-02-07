@@ -42,6 +42,8 @@ static uint32_t isqrt32(uint32_t x)
 #define FFT_AREA_Y_BOTTOM   ((TFT_HEIGHT * 70) / 80)
 #define FFT_AREA_HEIGHT     (FFT_AREA_Y_BOTTOM - FFT_AREA_Y_TOP + 1)
 #define FFT_LABEL_Y         (FFT_FRAME_HEIGHT + 1)
+#define FFT_Y_GAIN_NUM      3U
+#define FFT_Y_GAIN_DEN      1U
 
 // タイトル文字列
 //static char title1[]   = "Freq.Detector";
@@ -183,6 +185,7 @@ int freqDetector(int8_t *vReal, int8_t *vImag)
 		uint16_t ave = 0;
 		uint8_t  val = 0;
 		unsigned long t = 0;
+		uint16_t mag[SAMPLES / 2];
 #if FFT_FPS_MEASURE
 		static uint32_t fps_last_ms = 0;
 		static uint16_t fps_frames = 0;
@@ -217,27 +220,43 @@ TEST_LOW
 			int16_t vr = vReal[i];
 			int16_t vi = vImag[i];
 			uint32_t mag2 = (uint32_t)(vr * vr) + (uint32_t)(vi * vi);
-			vReal[i] = (int8_t)isqrt32(mag2);
+			uint16_t m = (uint16_t)isqrt32(mag2);
+			mag[i] = m;
 		}
 		// draw FFT result (DMA scanline)
 		uint8_t maxIndex = 0;
-		uint8_t maxValue = 0;
+		uint16_t maxValue = 0;
 		static uint8_t bar_x[64];
 		static uint8_t bar_h[64];
+		static uint16_t bar_h_q8[64];
 		static uint8_t linebuf[TFT_WIDTH * 2] = {0};
 		const uint16_t line_width = (TFT_WIDTH > 2) ? (uint16_t)(TFT_WIDTH - 2) : 0;
 
 		tft_fill_rect(1, FFT_AREA_Y_TOP, TFT_WIDTH - 2, FFT_AREA_HEIGHT, BLACK);
 
 		for (int i = 1; i < fft_bins; i++) {
-			int16_t val = vReal[i] * SCALE;
-			if (val > (int16_t)(FFT_AREA_HEIGHT - 1)) val = (int16_t)(FFT_AREA_HEIGHT - 1);
+			uint16_t m = mag[i];
+			uint32_t target = ((uint32_t)m * (uint32_t)SCALE * FFT_Y_GAIN_NUM * 256U + (FFT_Y_GAIN_DEN / 2U)) / FFT_Y_GAIN_DEN;
+			uint32_t max_q8 = (uint32_t)(FFT_AREA_HEIGHT - 1) * 256U;
+			if (target > max_q8) target = max_q8;
+			// Fast attack / slow release to reduce visible stair-step flicker.
+			if (target >= bar_h_q8[i]) {
+				bar_h_q8[i] = (uint16_t)(bar_h_q8[i] + ((target - bar_h_q8[i] + 1U) / 2U));
+			} else {
+				bar_h_q8[i] = (uint16_t)(bar_h_q8[i] - ((bar_h_q8[i] - target + 3U) / 4U));
+			}
+			uint16_t h = (uint16_t)((bar_h_q8[i] + 128U) >> 8);
+			if (h == 0 && m > 0) h = 1;
+			if (h > (uint16_t)(FFT_AREA_HEIGHT - 1)) h = (uint16_t)(FFT_AREA_HEIGHT - 1);
 			bar_x[i] = (uint8_t)(plot_left + (i * bin_step));
-			bar_h[i] = (uint8_t)val;
-			if (vReal[i] > maxValue) {
-				maxValue = vReal[i];
+			bar_h[i] = (uint8_t)h;
+			if (m > maxValue) {
+				maxValue = m;
 				maxIndex = i;
 			}
+		}
+		for (int i = fft_bins; i < 64; i++) {
+			bar_h_q8[i] = 0;
 		}
 
 		for (uint16_t y = FFT_AREA_Y_TOP; y <= FFT_AREA_Y_BOTTOM; y++) {
