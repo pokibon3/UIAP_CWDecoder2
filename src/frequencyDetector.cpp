@@ -106,6 +106,8 @@ int freqDetector(int8_t *vReal, int8_t *vImag)
 {
 	uint16_t peakFrequency = 0;
 	uint16_t oldFreequency = 0;
+	uint8_t  oldHasSignal = 0;
+	uint32_t lastSignalMs = 0;
 	char buf[16];
 
 	tft_fill_rect(0, 0, TFT_WIDTH, TFT_HEIGHT, BLACK);
@@ -292,18 +294,33 @@ TEST_LOW
 		tft_draw_line(line2_x, 1, line2_x, FFT_FRAME_HEIGHT - 1, DARKBLUE); // 2.0kHz line
 		// disp freqeuncy
 		peakFrequency = (FD_SAMPLING_FREQUENCY / SAMPLES) * maxIndex;
-		if (peakFrequency != oldFreequency) {
-			if (maxValue >= 4 ) {
-				mini_snprintf(buf, sizeof(buf), "%4dHz", peakFrequency + FD_SAMPLING_FREQUENCY / SAMPLES / 2);
-			} else {
-				strcpy(buf, "    Hz");
+		{
+			uint32_t now = millis();
+			uint8_t hasSignal = (maxValue >= 4) ? 1 : 0;
+			uint8_t showSignal = hasSignal;
+			uint16_t displayFrequency = oldFreequency;
+
+			if (hasSignal) {
+				lastSignalMs = now;
+				displayFrequency = peakFrequency;
+			} else if (lastSignalMs != 0 && (now - lastSignalMs) < 1000U) {
+				// Hold last stable reading for 1s to avoid flicker on short dropouts.
+				showSignal = 1;
 			}
-			tft_set_cursor((6 - strlen(buf)) * 12 + value_text_base, 3);
-			tft_set_color(YELLOW);
-			tft_fill_rect(value_area_x, 1, (plot_left + plot_width) - value_area_x - 2, 18, BLACK);
-			tft_print(buf, FONT_SCALE_16X16);
-			
-			oldFreequency = peakFrequency;
+
+			if ((displayFrequency != oldFreequency) || (showSignal != oldHasSignal)) {
+				if (showSignal) {
+					mini_snprintf(buf, sizeof(buf), "%4dHz", displayFrequency + FD_SAMPLING_FREQUENCY / SAMPLES / 2);
+				} else {
+					strcpy(buf, "    Hz");
+				}
+				tft_set_cursor((6 - strlen(buf)) * 12 + value_text_base, 3);
+				tft_set_color(YELLOW);
+				tft_fill_rect(value_area_x, 1, (plot_left + plot_width) - value_area_x - 2, 18, BLACK);
+				tft_print(buf, FONT_SCALE_16X16);
+				oldFreequency = displayFrequency;
+				oldHasSignal = showSignal;
+			}
 		}
 #if FFT_FPS_MEASURE
 		fps_frames++;
