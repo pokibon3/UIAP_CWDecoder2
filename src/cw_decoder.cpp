@@ -289,6 +289,9 @@ static int decodeAscii(int16_t asciinumber)
 	} else if (asciinumber == 4) {			// VA
 		cw_display_enqueue_char('V');
 		cw_display_enqueue_char('A');
+	} else if (asciinumber == 8) {			// BK
+		cw_display_enqueue_char('B');
+		cw_display_enqueue_char('K');
 	} else if (asciinumber == 7) {			// HH (訂正)
 		cw_display_enqueue_char('H');
 		cw_display_enqueue_char('H');
@@ -345,7 +348,7 @@ int cwDecoder(void)
 		////////////////////////////////////
 		// 振幅でしきい値判定
 		////////////////////////////////////
-		if(magnitude > magnitudelimit*0.6) {  // 余裕を持たせる
+		if (((uint32_t)magnitude * 5U) > ((uint32_t)magnitudelimit * 3U)) {  // 余裕を持たせる (0.6)
      		realstate = GPIO_HIGH;
 		} else {
     		realstate = GPIO_LOW;
@@ -419,7 +422,7 @@ int cwDecoder(void)
 		if (filteredstate != filteredstatebefore){
 			stop = GPIO_LOW;
 			if (filteredstate == GPIO_LOW){  //// HIGH 終了
-				if (highduration < (hightimesavg*2) && highduration > (hightimesavg*0.6) &&
+				if (highduration < (hightimesavg*2) && ((uint32_t)highduration * 5U) > ((uint32_t)hightimesavg * 3U) &&
 					symbol_gap_is_valid(lowduration, hightimesavg)){ /// 0.6 未満はノイズ除外
 					strcat(code,".");
 					wpm_update_suppress = 0;

@@ -12,6 +12,17 @@ static const uint8_t ADC_PIN = GPIOv_from_PORT_PIN(GPIO_port_A, 2); // for uiap
 static const uint8_t LED_PIN = GPIOv_from_PORT_PIN(GPIO_port_C, 0); // for uiap
 static const uint8_t UART_PIN = GPIOv_from_PORT_PIN(GPIO_port_D, 5);
 static const uint8_t TEST_PIN = GPIOv_from_PORT_PIN(GPIO_port_D, 6);
+static const uint8_t ADC_CH_A2 = 0; // PA2 = ADC_IN0 on CH32V003
+
+static inline uint16_t adc_read_ch0_raw()
+{
+	ADC1->RSQR3 = ADC_CH_A2;
+	Delay_Us(GPIO_ADC_MUX_DELAY);
+	ADC1->CTLR2 |= ADC_SWSTART;
+	while (!(ADC1->STATR & ADC_EOC)) {
+	}
+	return (uint16_t)ADC1->RDATAR;
+}
 void tim1_pwm_init( void )
 {
 	// Enable GPIOD and TIM1
@@ -112,7 +123,7 @@ int check_input()
 
 uint16_t adc_read_raw()
 {
-	return (uint16_t)GPIO_analogRead(GPIO_Ain0_A2);
+	return adc_read_ch0_raw();
 }
 
 uint16_t adc_capture_u8(int8_t *dst, uint16_t samples, uint16_t sample_period_us)
@@ -124,7 +135,7 @@ uint16_t adc_capture_u8(int8_t *dst, uint16_t samples, uint16_t sample_period_us
 
 	for (uint16_t i = 0; i < samples; i++) {
 		uint32_t t = micros();
-		uint8_t val = (uint8_t)((GPIO_analogRead(GPIO_Ain0_A2) >> 2) & 0xFF);
+		uint8_t val = (uint8_t)((adc_read_ch0_raw() >> 2) & 0xFF);
 		sum += val;
 		dst[i] = (int8_t)val;
 		while ((micros() - t) < sample_period_us) {
