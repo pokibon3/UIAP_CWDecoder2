@@ -1,18 +1,71 @@
 //
-//	CW Decoder Common functions
+// CW Decoder Common functions
 //
 #include <stdint.h>
 #include "common.h"
-#include "ch32v003_GPIO_branchless.h"
+#include "ch32fun.h"
 
-static const uint8_t SW1_PIN = GPIOv_from_PORT_PIN(GPIO_port_A, 1); // for uiap
-static const uint8_t SW2_PIN = GPIOv_from_PORT_PIN(GPIO_port_C, 4); // for uiap
-static const uint8_t SW3_PIN = GPIOv_from_PORT_PIN(GPIO_port_D, 2);
-static const uint8_t ADC_PIN = GPIOv_from_PORT_PIN(GPIO_port_A, 2); // for uiap
-static const uint8_t LED_PIN = GPIOv_from_PORT_PIN(GPIO_port_C, 0); // for uiap
-static const uint8_t UART_PIN = GPIOv_from_PORT_PIN(GPIO_port_D, 5);
-static const uint8_t TEST_PIN = GPIOv_from_PORT_PIN(GPIO_port_D, 6);
+// Pin mapping (UIAP board)
+static const uint8_t SW1_PIN = 1; // PA1
+static const uint8_t SW2_PIN = 4; // PC4
+static const uint8_t SW3_PIN = 2; // PD2
+static const uint8_t ADC_PIN = 2; // PA2 (ADC_IN0)
+static const uint8_t LED_PIN = 0; // PC0
+static const uint8_t UART_PIN = 5; // PD5
+static const uint8_t TEST_PIN = 6; // PD6
 static const uint8_t ADC_CH_A2 = 0; // PA2 = ADC_IN0 on CH32V003
+
+// GPIO CFGLR nibble encodings (MODE[1:0] + CNF[1:0] << 2)
+static const uint8_t GPIO_CFG_INPUT_ANALOG = 0x0;
+static const uint8_t GPIO_CFG_INPUT_PUPD = 0x8;
+static const uint8_t GPIO_CFG_OUTPUT_PP_10M = 0x1;
+static const uint8_t GPIO_CFG_OUTPUT_AF_PP_10M = 0x9;
+
+static inline void gpio_cfg_pin(GPIO_TypeDef *port, uint8_t pin, uint8_t cfg)
+{
+	uint32_t shift = (uint32_t)pin * 4U;
+	uint32_t mask = (uint32_t)0xFU << shift;
+	port->CFGLR = (port->CFGLR & ~mask) | ((uint32_t)cfg << shift);
+}
+
+static inline void gpio_write(GPIO_TypeDef *port, uint8_t pin, uint8_t level)
+{
+	if (level == GPIO_HIGH) {
+		port->BSHR = (uint32_t)1U << pin;
+	} else {
+		port->BCR = (uint32_t)1U << pin;
+	}
+}
+
+static inline uint8_t gpio_read(GPIO_TypeDef *port, uint8_t pin)
+{
+	return (uint8_t)((port->INDR >> pin) & 1U);
+}
+
+static void adc_init_ch0(void)
+{
+	RCC->APB2PCENR |= RCC_APB2Periph_ADC1;
+	RCC->APB2PRSTR |= RCC_APB2Periph_ADC1;
+	RCC->APB2PRSTR &= ~RCC_APB2Periph_ADC1;
+
+	// Sample time: medium (15 cycles) for all channels.
+	ADC1->SAMPTR2 = (ADC_SMP0_1 << (3 * 0)) | (ADC_SMP0_1 << (3 * 1)) |
+		(ADC_SMP0_1 << (3 * 2)) | (ADC_SMP0_1 << (3 * 3)) |
+		(ADC_SMP0_1 << (3 * 4)) | (ADC_SMP0_1 << (3 * 5)) |
+		(ADC_SMP0_1 << (3 * 6)) | (ADC_SMP0_1 << (3 * 7)) |
+		(ADC_SMP0_1 << (3 * 8)) | (ADC_SMP0_1 << (3 * 9));
+	ADC1->SAMPTR1 = (ADC_SMP0_1 << (3 * 0)) | (ADC_SMP0_1 << (3 * 1)) |
+		(ADC_SMP0_1 << (3 * 2)) | (ADC_SMP0_1 << (3 * 3)) |
+		(ADC_SMP0_1 << (3 * 4)) | (ADC_SMP0_1 << (3 * 5));
+
+	ADC1->CTLR2 |= ADC_ADON | ADC_EXTSEL;
+	ADC1->CTLR2 |= CTLR2_RSTCAL_Set;
+	while (ADC1->CTLR2 & CTLR2_RSTCAL_Set) {
+	}
+	ADC1->CTLR2 |= CTLR2_CAL_Set;
+	while (ADC1->CTLR2 & CTLR2_CAL_Set) {
+	}
+}
 
 static inline uint16_t adc_read_ch0_raw()
 {
@@ -23,102 +76,81 @@ static inline uint16_t adc_read_ch0_raw()
 	}
 	return (uint16_t)ADC1->RDATAR;
 }
-void tim1_pwm_init( void )
+
+void tim1_pwm_init(void)
 {
-	// Enable GPIOD and TIM1
-	//RCC->APB2PCENR |= RCC_APB2Periph_GPIOD;
 	RCC->APB2PCENR |= RCC_APB2Periph_TIM1;
-
-	// PD2 is T1CH1, 10MHz Output alt func, push-pull (no remap)
-	//GPIOD->CFGLR &= ~(0xf<<(4*2));
-	//GPIOD->CFGLR |= (GPIO_Speed_10MHz | GPIO_CNF_OUT_PP_AF)<<(4*2);
-
-	// Reset TIM1 to init all regs
 	RCC->APB2PRSTR |= RCC_APB2Periph_TIM1;
 	RCC->APB2PRSTR &= ~RCC_APB2Periph_TIM1;
 
-	// SMCFGR: default clk input is CK_INT
-	// set TIM1 update rate ~8192Hz (48MHz / (0+1) / (5859) = 8192.7Hz)
 	TIM1->PSC = 0;
 	TIM1->ATRLR = 5859 - 1;
-
-	// for channel 1, let CCxS stay 00 (output), set OCxM to 110 (PWM I)
-	// enabling preload causes the new pulse width in compare capture register only to come into effect when UG bit in SWEVGR is set (= initiate update) (auto-clears)
 	TIM1->CHCTLR1 |= TIM_OC1M_2 | TIM_OC1M_1 | TIM_OC1PE;
-
-	// CTLR1: default is up, events generated, edge align
-	// enable auto-reload of preload
 	TIM1->CTLR1 |= TIM_ARPE;
-
-	// Enable Channel output, set default state
 	TIM1->CCER |= TIM_CC1E;
-
-	// initialize counter
 	TIM1->SWEVGR |= TIM_UG;
-	// enable update interrupt
 	TIM1->INTFR = (uint16_t)~TIM_IT_Update;
 	NVIC->IPRIOR[TIM1_UP_IRQn] = 0 << 7 | 1 << 6;
-	NVIC->IENR[((uint32_t)(TIM1_UP_IRQn) >> 5)] |= (1 << ((uint32_t)(TIM1_UP_IRQn) & 0x1F));
+	NVIC->IENR[((uint32_t)(TIM1_UP_IRQn) >> 5)] |= (1U << ((uint32_t)(TIM1_UP_IRQn) & 0x1F));
 	TIM1->DMAINTENR |= TIM_IT_Update;
-	// set default duty cycle 50% for channel 1
 	TIM1->CH1CVR = 128;
-	// Enable TIM1 main output
 	TIM1->BDTR |= TIM_MOE;
-	// Enable TIM1
 	TIM1->CTLR1 |= TIM_CEN;
 }
 
 void tim1_pwm_stop(void)
 {
-	// Disable update interrupt and stop timer to avoid stray ISR use.
 	TIM1->DMAINTENR &= ~TIM_IT_Update;
 	TIM1->CTLR1 &= ~TIM_CEN;
 }
 
 //==================================================================
-//	setup
+// setup
 //==================================================================
 int GPIO_setup()
 {
-    // Enable GPIO Ports A, C, D
-    GPIO_port_enable(GPIO_port_A);
-    GPIO_port_enable(GPIO_port_C);
-    GPIO_port_enable(GPIO_port_D);
-    // Set Pin Modes
-    GPIO_pinMode(SW1_PIN, GPIO_pinMode_I_pullUp, GPIO_Speed_10MHz);
-    GPIO_pinMode(SW2_PIN, GPIO_pinMode_I_pullUp, GPIO_Speed_10MHz);
-    GPIO_pinMode(SW3_PIN, GPIO_pinMode_I_pullUp, GPIO_Speed_10MHz);
-    GPIO_pinMode(ADC_PIN, GPIO_pinMode_I_analog, GPIO_Speed_10MHz);
-	GPIO_pinMode(LED_PIN, GPIO_pinMode_O_pushPull, GPIO_Speed_10MHz);
-	GPIO_digitalWrite(LED_PIN, low);
+	RCC->APB2PCENR |= RCC_APB2Periph_GPIOA | RCC_APB2Periph_GPIOC |
+		RCC_APB2Periph_GPIOD | RCC_APB2Periph_AFIO;
 
-	GPIO_pinMode(TEST_PIN, GPIO_pinMode_O_pushPull, GPIO_Speed_10MHz);
-	GPIO_digitalWrite(TEST_PIN, low);
+	// Switches: input pull-up.
+	gpio_cfg_pin(GPIOA, SW1_PIN, GPIO_CFG_INPUT_PUPD);
+	gpio_cfg_pin(GPIOC, SW2_PIN, GPIO_CFG_INPUT_PUPD);
+	gpio_cfg_pin(GPIOD, SW3_PIN, GPIO_CFG_INPUT_PUPD);
+	gpio_write(GPIOA, SW1_PIN, GPIO_HIGH);
+	gpio_write(GPIOC, SW2_PIN, GPIO_HIGH);
+	gpio_write(GPIOD, SW3_PIN, GPIO_HIGH);
 
-	GPIO_pinMode(UART_PIN, GPIO_pinMode_O_pushPullMux, GPIO_Speed_10MHz);
-	RCC->APB2PCENR |= RCC_APB2Periph_AFIO;
+	// ADC input: analog.
+	gpio_cfg_pin(GPIOA, ADC_PIN, GPIO_CFG_INPUT_ANALOG);
 
-	GPIO_ADCinit();
+	// LED / TEST: output push-pull.
+	gpio_cfg_pin(GPIOC, LED_PIN, GPIO_CFG_OUTPUT_PP_10M);
+	gpio_cfg_pin(GPIOD, TEST_PIN, GPIO_CFG_OUTPUT_PP_10M);
+	gpio_write(GPIOC, LED_PIN, GPIO_LOW);
+	gpio_write(GPIOD, TEST_PIN, GPIO_LOW);
 
-    return 0;
+	// UART TX pin: alternate function push-pull.
+	gpio_cfg_pin(GPIOD, UART_PIN, GPIO_CFG_OUTPUT_AF_PP_10M);
+
+	adc_init_ch0();
+	return 0;
 }
 
 //==================================================================
-//	chack switch
+// check switch
 //==================================================================
 int check_input()
 {
-    int ret = 0;
-	if (!GPIO_digitalRead(SW1_PIN)) {               // up sw
-        ret = 1;
-    } else if (!GPIO_digitalRead(SW3_PIN)) {        // mode sw
-        ret = 3;
-	} else if (!GPIO_digitalRead(SW2_PIN)) {        // mode sw
-        ret = 2;
-	} else {
-        ret = 0;
-    }
-    return ret;
+	if (!gpio_read(GPIOA, SW1_PIN)) {
+		return 1;
+	}
+	if (!gpio_read(GPIOD, SW3_PIN)) {
+		return 3;
+	}
+	if (!gpio_read(GPIOC, SW2_PIN)) {
+		return 2;
+	}
+	return 0;
 }
 
 uint16_t adc_read_raw()
@@ -146,19 +178,10 @@ uint16_t adc_capture_u8(int8_t *dst, uint16_t samples, uint16_t sample_period_us
 
 void gpio_write_led(uint8_t level)
 {
-	if (level == GPIO_HIGH) {
-		GPIO_digitalWrite(LED_PIN, high);
-	} else {
-		GPIO_digitalWrite(LED_PIN, low);
-	}
+	gpio_write(GPIOC, LED_PIN, level);
 }
 
 void gpio_write_test(uint8_t level)
 {
-	if (level == GPIO_HIGH) {
-		GPIO_digitalWrite(TEST_PIN, high);
-	} else {
-		GPIO_digitalWrite(TEST_PIN, low);
-	}
+	gpio_write(GPIOD, TEST_PIN, level);
 }
-

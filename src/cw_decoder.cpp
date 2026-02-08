@@ -265,7 +265,7 @@ int cwDecoder(void)
 		////////////////////////////////////
 		// 振幅でしきい値判定
 		////////////////////////////////////
-		if(magnitude > magnitudelimit*0.6) {  // 余裕を持たせる
+		if (((uint32_t)magnitude * 5U) > ((uint32_t)magnitudelimit * 3U)) {  // 余裕を持たせる (0.6)
      		realstate = GPIO_HIGH;
 		} else {
     		realstate = GPIO_LOW;
@@ -329,7 +329,7 @@ int cwDecoder(void)
 		if (filteredstate != filteredstatebefore){
 			stop = GPIO_LOW;
 			if (filteredstate == GPIO_LOW){  //// HIGH 終了
-				if (highduration < (hightimesavg*2) && highduration > (hightimesavg*0.6)){ /// 0.6 未満はノイズ除外
+				if (highduration < (hightimesavg*2) && ((uint32_t)highduration * 5U) > ((uint32_t)hightimesavg * 3U)){ /// 0.6 未満はノイズ除外
 					strcat(code,".");
 //					printf(".");
 				}
