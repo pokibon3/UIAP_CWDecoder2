@@ -6,24 +6,21 @@
 #include "common.h"
 #include "goertzel.h"
 #include "decode.h"
-#include "ch32v003fun.h"
-#include "ch32v003_GPIO_branchless.h"
+#include "ch32fun.h"
 #include "cw_display.h"
+#include <cstring>
 
 //#define SERIAL_OUT
-
-#define TEST_HIGH			GPIO_digitalWrite(TEST_PIN, high);
-#define TEST_LOW			GPIO_digitalWrite(TEST_PIN, low);
 
 #define GOERTZEL_SAMPLES 48
 #define GOERTZEL_SAMPLING_FREQUENCY 8192
 #define NOISE_BLANKER_ENABLED 1
 static uint16_t magnitudelimit = 140;  		// 以前は 140
 static uint16_t magnitudelimit_low = 140;
-static uint16_t realstate = low;
-static uint16_t realstatebefore = low;
-static uint16_t filteredstate = low;
-static uint16_t filteredstatebefore = low;
+static uint16_t realstate = GPIO_LOW;
+static uint16_t realstatebefore = GPIO_LOW;
+static uint16_t filteredstate = GPIO_LOW;
+static uint16_t filteredstatebefore = GPIO_LOW;
 static uint32_t starttimehigh;
 static uint32_t highduration;
 static uint32_t lasthighduration;
@@ -35,7 +32,7 @@ static uint32_t laststarttime = 0;
 static uint16_t nbtime = 6;  /// ノイズブランカの時間(ms)
 
 static char code[20];
-static uint16_t stop = low;
+static uint16_t stop = GPIO_LOW;
 static uint16_t wpm;
 static uint16_t wpm_update_suppress = 0;
 
@@ -164,7 +161,7 @@ extern "C" void TIM1_UP_IRQHandler(void)
 	}
 
 	{
-		uint16_t sample = (uint16_t)(GPIO_analogRead(GPIO_Ain0_A2) >> 1);
+		uint16_t sample = (uint16_t)(adc_read_raw() >> 1);
 		get_morse_buf(morseWriteBuf)[morseWriteIndex] = (int16_t)sample;
 		morseSum[morseWriteBuf] += sample;
 		morseWriteIndex++;
@@ -349,9 +346,9 @@ int cwDecoder(void)
 		// 振幅でしきい値判定
 		////////////////////////////////////
 		if(magnitude > magnitudelimit*0.6) {  // 余裕を持たせる
-     		realstate = high;
+     		realstate = GPIO_HIGH;
 		} else {
-    		realstate = low;
+    		realstate = GPIO_LOW;
 		}
 
 		/////////////////////////////////////////////////////
@@ -368,7 +365,7 @@ int cwDecoder(void)
 		// Bypass debounce for the first rising edge after a long gap.
 		{
 			uint32_t unit = (hightimesavg > 0) ? hightimesavg : highduration;
-			if (filteredstate == low && realstate == high && lowduration > unit * 6) {
+			if (filteredstate == GPIO_LOW && realstate == GPIO_HIGH && lowduration > unit * 6) {
 				filteredstate = realstate;
 			}
 		}
@@ -385,11 +382,11 @@ int cwDecoder(void)
 		// HIGH/LOW の継続時間を計測
 		////////////////////////////////////////////////////////////
 		if (filteredstate != filteredstatebefore) {
-			if (filteredstate == high) {
+			if (filteredstate == GPIO_HIGH) {
 				starttimehigh = millis();
 				lowduration = (millis() - startttimelow);
 			}
-			if (filteredstate == low) {
+			if (filteredstate == GPIO_LOW) {
 				startttimelow = millis();
 				highduration = (millis() - starttimehigh);
 				if (hightimesavg == 0) {
@@ -420,8 +417,8 @@ int cwDecoder(void)
 		// hightimesavg を 1単位(短点)とみなす
 		///////////////////////////////////////////////////////////////
 		if (filteredstate != filteredstatebefore){
-			stop = low;
-			if (filteredstate == low){  //// HIGH 終了
+			stop = GPIO_LOW;
+			if (filteredstate == GPIO_LOW){  //// HIGH 終了
 				if (highduration < (hightimesavg*2) && highduration > (hightimesavg*0.6) &&
 					symbol_gap_is_valid(lowduration, hightimesavg)){ /// 0.6 未満はノイズ除外
 					strcat(code,".");
@@ -445,7 +442,7 @@ int cwDecoder(void)
 				}
 			}
 		}
-		if (filteredstate == high) {  //// LOW 終了
+		if (filteredstate == GPIO_HIGH) {  //// LOW 終了
 
 			if (hightimesavg > 0) {
 				gap_type_t g = classify_gap(lowduration, hightimesavg);
@@ -472,23 +469,23 @@ int cwDecoder(void)
 		// 一定時間無音なら確定出力
 		//////////////////////////////
 		uint32_t unit = (hightimesavg > 0) ? hightimesavg : highduration;
-		if ((millis() - startttimelow) > unit * 6 && stop == low) {
+		if ((millis() - startttimelow) > unit * 6 && stop == GPIO_LOW) {
 			wpm_update_suppress = 1;
 			if (code_is_emitworthy(code, unit, highduration, (millis() - startttimelow))) {
 				decodeAscii(decode(code, &sw));
 			}
 			code[0] = '\0';
-			stop = high;
+			stop = GPIO_HIGH;
 		}
 
 		/////////////////////////////////////
 		// LED の点灯/消灯
 		// スピーカ制御(未使用)
 		/////////////////////////////////////
-		if(filteredstate == high){
-			GPIO_digitalWrite(LED_PIN, high);
+		if(filteredstate == GPIO_HIGH){
+			gpio_write_led(GPIO_HIGH);
 		} else {
-			GPIO_digitalWrite(LED_PIN, low);
+			gpio_write_led(GPIO_LOW);
 		}
 
 		//////////////////////////////////

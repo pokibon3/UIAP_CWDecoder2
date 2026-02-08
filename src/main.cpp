@@ -77,7 +77,7 @@
 #include <string.h>
 
 #include "common.h"
-#include "ch32v003fun.h"
+#include "ch32fun.h"
 #include "cw_decoder.h"
 #include "frequencyDetector.h"
 

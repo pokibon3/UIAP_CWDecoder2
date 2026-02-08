@@ -11,6 +11,9 @@
 #define micros() (SysTick->CNT / DELAY_US_TIME)
 #define millis() (SysTick->CNT / DELAY_MS_TIME)
 
+static const uint8_t GPIO_LOW = 0;
+static const uint8_t GPIO_HIGH = 1;
+
 // TFT selection (set TFT_ST7735 or TFT_ST7789 via build flags)
 
 #if (defined(TFT_ST7735) && defined(TFT_ST7789))
@@ -61,16 +64,13 @@
 #endif
 #endif
 
-#define SW1_PIN GPIOv_from_PORT_PIN(GPIO_port_A, 1)		// for uiap
-#define SW2_PIN GPIOv_from_PORT_PIN(GPIO_port_C, 4)		// for uiap
-#define SW3_PIN GPIOv_from_PORT_PIN(GPIO_port_D, 2)
-#define ADC_PIN GPIOv_from_PORT_PIN(GPIO_port_A, 2)		// for uiap
-#define LED_PIN GPIOv_from_PORT_PIN(GPIO_port_C, 0)		// for uiap
-#define UART_PIN GPIOv_from_PORT_PIN(GPIO_port_D, 5)
-#define TEST_PIN GPIOv_from_PORT_PIN(GPIO_port_D, 6)
+extern uint16_t adc_read_raw();
+extern uint16_t adc_capture_u8(int8_t *dst, uint16_t samples, uint16_t sample_period_us);
+extern void gpio_write_led(uint8_t level);
+extern void gpio_write_test(uint8_t level);
 
-#define TEST_HIGH			GPIO_digitalWrite(TEST_PIN, high);
-#define TEST_LOW			GPIO_digitalWrite(TEST_PIN, low);
+#define TEST_HIGH gpio_write_test(GPIO_HIGH);
+#define TEST_LOW  gpio_write_test(GPIO_LOW);
 
 #define SAMPLES 128
 #define BUFSIZE (SAMPLES * 2)

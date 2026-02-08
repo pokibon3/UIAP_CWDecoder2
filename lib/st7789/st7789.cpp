@@ -1,5 +1,5 @@
 #include "st7789.h"
-#include "ch32v003fun.h"
+#include "ch32fun.h"
 #include "fontk_8x8.h"
 #include <stdbool.h>
 

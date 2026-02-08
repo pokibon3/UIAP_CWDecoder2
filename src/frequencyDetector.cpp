@@ -7,10 +7,9 @@
 #include <string.h>
 
 #include "common.h"
-#include "ch32v003_GPIO_branchless.h"
 #include "frequencyDetector.h"
 #include "fix_fft.h"
-#include "ch32v003fun.h"
+#include "ch32fun.h"
 
 #define FD_SAMPLING_FREQUENCY 6000	// Hz	+10%
 #define FFT_FPS_MEASURE 0
@@ -181,8 +180,6 @@ int freqDetector(int8_t *vReal, int8_t *vImag)
 
 	while(1) {
 		uint16_t ave = 0;
-		uint8_t  val = 0;
-		unsigned long t = 0;
 #if FFT_FPS_MEASURE
 		static uint32_t fps_last_ms = 0;
 		static uint16_t fps_frames = 0;
@@ -194,15 +191,8 @@ int freqDetector(int8_t *vReal, int8_t *vImag)
         }
 TEST_HIGH
 		// input audio
-		for (int i = 0; i < SAMPLES; i++) {
-			t = micros();
-			val = (uint8_t)((GPIO_analogRead(GPIO_Ain0_A2) >> 2) & 0xFF); // 0-255
-			ave += val;
-			vImag[i] = val;
-			while ((micros() - t) < sampling_period_us);
-		}
+		ave = adc_capture_u8(vImag, SAMPLES, sampling_period_us);
 TEST_LOW
-		ave = ave / SAMPLES;
 		//printf("ave = %d\n", ave);
 		for (int i = 0; i < SAMPLES; i++) {
 			vReal[i] = (int8_t)(vImag[i] - ave);
