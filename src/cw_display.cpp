@@ -456,19 +456,24 @@ void cw_display_draw_magnitude(int32_t magnitude)
 		tft_draw_line(TFT_WIDTH - 1, TFT_HEIGHT - 1, TFT_WIDTH - 1, 0, BLACK);
 		{
 			int16_t w = (int16_t)(TFT_HEIGHT - 1) - (magnitude / 8);
-			int16_t level;
-			uint16_t bar_color;
+			int16_t y_bottom = (int16_t)(TFT_HEIGHT - 1);
+			int16_t y_q1 = (int16_t)(TFT_HEIGHT - (TFT_HEIGHT / 4));       // 1/4 height
+			int16_t y_q3 = (int16_t)(TFT_HEIGHT - ((TFT_HEIGHT * 3) / 4)); // 3/4 height
+			int16_t y_top;
 			if (w < 0) w = 0;
-			if (w > (int16_t)(TFT_HEIGHT - 1)) w = (int16_t)(TFT_HEIGHT - 1);
-			level = (int16_t)(TFT_HEIGHT - 1 - w);
-			if (level < (int16_t)(TFT_HEIGHT / 4)) {
-				bar_color = YELLOW; // too weak
-			} else if (level < (int16_t)((TFT_HEIGHT * 3) / 4)) {
-				bar_color = GREEN;  // decode-friendly range
-			} else {
-				bar_color = RED;    // too strong / likely noisy
+			if (w > y_bottom) w = y_bottom;
+
+			// Bar itself is color-banded by height:
+			// lower 1/4 = YELLOW, middle 1/2 = GREEN, upper 1/4 = RED.
+			y_top = (w > y_q1) ? w : y_q1;
+			tft_draw_line(TFT_WIDTH - 1, y_bottom, TFT_WIDTH - 1, y_top, YELLOW);
+			if (w < y_q1) {
+				y_top = (w > y_q3) ? w : y_q3;
+				tft_draw_line(TFT_WIDTH - 1, y_q1 - 1, TFT_WIDTH - 1, y_top, GREEN);
 			}
-			tft_draw_line(TFT_WIDTH - 1, TFT_HEIGHT - 1, TFT_WIDTH - 1, w, bar_color);
+			if (w < y_q3) {
+				tft_draw_line(TFT_WIDTH - 1, y_q3 - 1, TFT_WIDTH - 1, w, RED);
+			}
 		}
 	}
 }
