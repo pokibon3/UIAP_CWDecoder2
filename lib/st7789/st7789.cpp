@@ -5,41 +5,22 @@
 
 extern "C" int mini_snprintf(char* buffer, unsigned int buffer_len, const char *fmt, ...);
 
-// Pin mapping (board -> ST7789)
+// Pin mapping (CH32V003 -> ST7789)
 #define PIN_RESET 7  // PC7
-#if defined(BOARD_CH32V006)
-#define PIN_DC    0  // PC0
-#else
 #define PIN_DC    0  // PD0
-#endif
 #ifndef ST7789_NO_CS
-#if defined(BOARD_CH32V006)
-#define PIN_CS    4  // PA4
-#else
 #define PIN_CS    3  // PC3
-#endif
 #endif
 #define SPI_SCLK  5  // PC5
 #define SPI_MOSI  6  // PC6
 
-#if defined(BOARD_CH32V006)
-#define DC_PORT GPIOC
-#else
-#define DC_PORT GPIOD
-#endif
-
-#define DATA_MODE()    (DC_PORT->BSHR |= 1 << PIN_DC)
-#define COMMAND_MODE() (DC_PORT->BCR |= 1 << PIN_DC)
+#define DATA_MODE()    (GPIOD->BSHR |= 1 << PIN_DC)
+#define COMMAND_MODE() (GPIOD->BCR |= 1 << PIN_DC)
 #define RESET_HIGH()   (GPIOC->BSHR |= 1 << PIN_RESET)
 #define RESET_LOW()    (GPIOC->BCR |= 1 << PIN_RESET)
-#if defined(BOARD_CH32V006)
-#define CS_PORT GPIOA
-#else
-#define CS_PORT GPIOC
-#endif
 #ifndef ST7789_NO_CS
-#define START_WRITE()  (CS_PORT->BCR |= 1 << PIN_CS)
-#define END_WRITE()    (CS_PORT->BSHR |= 1 << PIN_CS)
+#define START_WRITE()  (GPIOC->BCR |= 1 << PIN_CS)
+#define END_WRITE()    (GPIOC->BSHR |= 1 << PIN_CS)
 #else
 #define START_WRITE()
 #define END_WRITE()
@@ -79,7 +60,6 @@ static uint16_t cursor_x = 0;
 static uint16_t cursor_y = 0;
 static uint16_t fg_color = WHITE;
 static uint16_t bg_color = BLACK;
-#if !defined(BOARD_CH32V006)
 static uint32_t dma_base_cfgr = 0;
 
 static void dma_init(void)
@@ -95,25 +75,20 @@ static void dma_init(void)
                     | DMA_Priority_VeryHigh
                     | DMA_M2M_Disable;
 }
-#endif
 
 static void spi_init(void)
 {
-#if defined(BOARD_CH32V006)
-    RCC->APB2PCENR |= RCC_APB2Periph_GPIOA | RCC_APB2Periph_GPIOC | RCC_APB2Periph_GPIOD | RCC_APB2Periph_SPI1;
-#else
     RCC->APB2PCENR |= RCC_APB2Periph_GPIOC | RCC_APB2Periph_GPIOD | RCC_APB2Periph_SPI1;
-#endif
 
     GPIOC->CFGLR &= ~(0xf << (PIN_RESET << 2));
     GPIOC->CFGLR |= (GPIO_CNF_OUT_PP | GPIO_Speed_50MHz) << (PIN_RESET << 2);
 
-    DC_PORT->CFGLR &= ~(0xf << (PIN_DC << 2));
-    DC_PORT->CFGLR |= (GPIO_CNF_OUT_PP | GPIO_Speed_50MHz) << (PIN_DC << 2);
+    GPIOD->CFGLR &= ~(0xf << (PIN_DC << 2));
+    GPIOD->CFGLR |= (GPIO_CNF_OUT_PP | GPIO_Speed_50MHz) << (PIN_DC << 2);
 
 #ifndef ST7789_NO_CS
-    CS_PORT->CFGLR &= ~(0xf << (PIN_CS << 2));
-    CS_PORT->CFGLR |= (GPIO_CNF_OUT_PP | GPIO_Speed_50MHz) << (PIN_CS << 2);
+    GPIOC->CFGLR &= ~(0xf << (PIN_CS << 2));
+    GPIOC->CFGLR |= (GPIO_CNF_OUT_PP | GPIO_Speed_50MHz) << (PIN_CS << 2);
 #endif
 
     GPIOC->CFGLR &= ~(0xf << (SPI_SCLK << 2));
@@ -131,10 +106,9 @@ static void spi_init(void)
                   | SPI_DataSize_8b
                   | SPI_Direction_1Line_Tx;
     SPI1->CTLR1 |= CTLR1_SPE_Set;
-#if !defined(BOARD_CH32V006)
     SPI1->CTLR2 |= SPI_I2S_DMAReq_Tx;
+
     dma_init();
-#endif
 }
 
 static inline void spi_write(uint8_t data)
@@ -148,15 +122,6 @@ static inline void spi_write(uint8_t data)
 
 static void spi_write_dma(const uint8_t* data, uint32_t length, bool mem_inc)
 {
-#if defined(BOARD_CH32V006)
-    while (length > 0) {
-        spi_write(*data);
-        if (mem_inc) {
-            data++;
-        }
-        length--;
-    }
-#else
     while (length > 0)
     {
         uint16_t chunk = (length > 0xFFFFu) ? 0xFFFFu : (uint16_t)length;
@@ -179,7 +144,6 @@ static void spi_write_dma(const uint8_t* data, uint32_t length, bool mem_inc)
             data += chunk;
         length -= chunk;
     }
-#endif
 }
 
 static inline void tft_write_cmd(uint8_t cmd)

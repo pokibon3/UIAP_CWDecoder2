@@ -297,6 +297,14 @@ void cw_display_update_info(uint16_t wpm, uint8_t sw, int16_t speed)
 	char buf[24];
 	const char *mode;
 	uint16_t w;
+	uint8_t buf_len;
+	uint8_t last_len;
+	uint8_t max_len;
+	uint8_t force_full = 0;
+	const uint16_t info_advance = (uint16_t)((8 - 2) * FONT_SCALE_16X16);
+	uint16_t x;
+	int16_t dirty_min = -1;
+	int16_t dirty_max = -1;
 
 	w = wpm;
 	if (sw == 0) {
@@ -310,6 +318,17 @@ void cw_display_update_info(uint16_t wpm, uint8_t sw, int16_t speed)
 		speed == info_last_speed) {
 		return;
 	}
+	if (info_sep_drawn && speed != info_last_speed) {
+		force_full = 1;
+	}
+	if (info_sep_drawn && sw != info_last_sw) {
+		force_full = 1;
+	}
+#if !defined(TFT_ST7789)
+	// ST7735 info line uses overlapping character advance; partial redraws can erase
+	// pixels from following characters, so redraw the full line.
+	force_full = 1;
+#endif
 #if defined(TFT_ST7789)
 #if (TFT_WIDTH < 240)
 	mini_snprintf(buf, sizeof(buf), "%2dW %s %dHz", w, mode, tone_hz[speed]);
@@ -319,6 +338,10 @@ void cw_display_update_info(uint16_t wpm, uint8_t sw, int16_t speed)
 #else
 	mini_snprintf(buf, sizeof(buf), "%2dWPM %s%s", w, mode, tone[speed]);
 #endif
+	buf_len = (uint8_t)strlen(buf);
+	last_len = (uint8_t)strlen(info_last_buf);
+	max_len = (buf_len > last_len) ? buf_len : last_len;
+	if (max_len == 0) return;
 #if defined(TFT_ST7789)
 	if (!info_sep_drawn) {
 		uint16_t info_h = (uint16_t)(8 * FONT_SCALE_16X16);
@@ -334,12 +357,34 @@ void cw_display_update_info(uint16_t wpm, uint8_t sw, int16_t speed)
 #endif
 	tft_set_background_color(BLACK);
 	tft_set_color(BLUE);
-	tft_fill_rect(0, 0, TFT_WIDTH, 16, BLACK);
-	tft_set_cursor(0, 0);
-	tft_print(buf, FONT_SCALE_16X16);
+	if (force_full) {
+		dirty_min = 0;
+		dirty_max = (int16_t)max_len - 1;
+	} else {
+		for (uint8_t i = 0; i < max_len; i++) {
+			char now = (i < buf_len) ? buf[i] : ' ';
+			char old = (i < last_len) ? info_last_buf[i] : ' ';
+			if (now != old) {
+				if (dirty_min < 0) dirty_min = (int16_t)i;
+				dirty_max = (int16_t)i;
+			}
+		}
+		if (dirty_min < 0) {
+			tft_set_color(WHITE);
+			return;
+		}
+		if (dirty_min > 0) dirty_min--;
+		if (dirty_max + 1 < (int16_t)max_len) dirty_max++;
+	}
+	for (int16_t i = dirty_min; i <= dirty_max; i++) {
+		char now = (i < buf_len) ? buf[i] : ' ';
+		x = (uint16_t)(i * info_advance);
+		tft_set_cursor(x, 0);
+		tft_print_char(now, FONT_SCALE_16X16);
+	}
 	tft_set_color(WHITE);
 	tft_set_background_color(BLACK);
-	strcpy(info_last_buf, buf);
+	memcpy(info_last_buf, buf, buf_len + 1);
 	info_last_wpm = w;
 	info_last_sw = (uint8_t)sw;
 	info_last_speed = speed;
@@ -432,3 +477,4 @@ void cw_display_draw_magnitude(int32_t magnitude)
 		}
 	}
 }
+

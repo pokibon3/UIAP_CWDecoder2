@@ -8,26 +8,12 @@
 
 #include "common.h"
 #include "frequencyDetector.h"
-#include "ch32fun.h"
-
-// ---- プラットフォーム別インクルード ----
-#if defined(BOARD_CH32V006)
-// CH32V006: float FFT + sqrtf
-#include "float_fft.h"
-#include <math.h>
-#else
-// CH32V003: 固定小数点 FFT (変更なし)
 #include "fix_fft.h"
-#endif
+#include "ch32fun.h"
 
 #define FD_SAMPLING_FREQUENCY 6000	// Hz	+10%
 #define FFT_FPS_MEASURE 0
 
-// ピークホールド: この値のフレーム数だけピークラインを保持する
-#define FFT_PEAK_HOLD_FRAMES 20
-
-// ---- isqrt32: CH32V003 専用 (V006では sqrtf を使用) ----
-#if !defined(BOARD_CH32V006)
 // integer sqrt: floor(sqrt(x))
 static uint32_t isqrt32(uint32_t x)
 {
@@ -48,7 +34,6 @@ static uint32_t isqrt32(uint32_t x)
 	}
 	return res;
 }
-#endif // !BOARD_CH32V006
 
 // 画面レイアウト用マクロ
 #define FFT_FRAME_HEIGHT    (TFT_HEIGHT - 8)
@@ -116,15 +101,8 @@ int fd_setup()
 
 //==================================================================
 //  adc and fft for freq counter
-//
-//  CH32V006: float *vReal, float *vImag  (float FFT + sqrtf)
-//  CH32V003: int8_t *vReal, int8_t *vImag (fix_fft + isqrt32, 変更なし)
 //==================================================================
-#if defined(BOARD_CH32V006)
-int freqDetector(float *vReal, float *vImag)
-#else
-int freqDetector(int8_t *vReal, int8_t *vImag)
-#endif
+int freqDetector(int8_t *vReal, int8_t *vImag) 
 {
 	uint16_t peakFrequency = 0;
 	uint16_t oldFreequency = 0;
@@ -205,7 +183,8 @@ int freqDetector(int8_t *vReal, int8_t *vImag)
 	tft_print(label2, FONT_SCALE_8X8);
 
 	while(1) {
-		uint16_t mag[SAMPLES / 2];   // 両チップ共通: 表示用 magnitude
+		uint16_t ave = 0;
+		uint16_t mag[SAMPLES / 2];
 #if FFT_FPS_MEASURE
 		static uint32_t fps_last_ms = 0;
 		static uint16_t fps_frames = 0;
@@ -215,73 +194,33 @@ int freqDetector(int8_t *vReal, int8_t *vImag)
 		if (check_sw() == 1) {
             break;
         }
-
 TEST_HIGH
-
-		// ================================================================
-		// ADC サンプリング → FFT → magnitude 計算
-		// ================================================================
-#if defined(BOARD_CH32V006)
-		// ---- CH32V006: float パス ----
-		// (1) ADC サンプリング (PA2 = ADC ch2 on V006, ADC_CH_A2=2)
-		float fave = 0.0f;
-		for (int i = 0; i < SAMPLES; i++) {
-			uint32_t t = micros();
-			uint8_t val = (uint8_t)((adc_read_raw() >> 2) & 0xFF);
-			fave += (float)val;
-			vReal[i] = (float)val;
-			while ((micros() - t) < sampling_period_us);
-		}
+		// input audio
+		ave = adc_capture_u8(vImag, SAMPLES, sampling_period_us);
 TEST_LOW
-		// (2) DC 除去
-		fave /= (float)SAMPLES;
-		for (int i = 0; i < SAMPLES; i++) {
-			vReal[i] -= fave;
-			vImag[i] = 0.0f;
-		}
-		// (3) float FFT
-		float_fft(vReal, vImag, 7);  // log2(128) = 7
-		// (4) magnitude 計算 (sqrtf) + 正規化
-		//     fix_fft は 7 段階の右シフト (÷128) を行うため、
-		//     float FFT 出力も SAMPLES で割ってスケールを合わせる。
-		{
-			const float norm = 1.0f / (float)SAMPLES;
-			for (int i = 0; i < SAMPLES / 2; i++) {
-				float m = sqrtf(vReal[i] * vReal[i] + vImag[i] * vImag[i]) * norm;
-				mag[i] = (m > 65535.0f) ? 65535U : (uint16_t)m;
-			}
-		}
-
-#else
-		// ---- CH32V003: integer パス (変更なし) ----
-		// (1) ADC サンプリング + DC 除去
-		uint16_t ave = adc_capture_u8(vImag, SAMPLES, sampling_period_us);
-TEST_LOW
+		//printf("ave = %d\n", ave);
 		for (int i = 0; i < SAMPLES; i++) {
 			vReal[i] = (int8_t)(vImag[i] - ave);
 			vImag[i] = 0; // Imaginary partは0に初期化
 		}
-		// (2) 固定小数点 FFT
-  		fix_fft((char *)vReal, (char *)vImag, 7, 0);
-		// (3) magnitude 計算 (isqrt32)
+//TEST_HIGH
+		// FFT
+  		fix_fft((char *)vReal, (char *)vImag, 7, 0); // SAMPLES = 256なので、log2(SAMPLES) = 8
+//TEST_HIGH
+		// Magnitude Calculation
 		for (int i = 0; i < SAMPLES / 2; i++) {
 			int16_t vr = vReal[i];
 			int16_t vi = vImag[i];
 			uint32_t mag2 = (uint32_t)(vr * vr) + (uint32_t)(vi * vi);
-			mag[i] = (uint16_t)isqrt32(mag2);
+			uint16_t m = (uint16_t)isqrt32(mag2);
+			mag[i] = m;
 		}
-#endif
-		// ================================================================
-		// 以下は両チップ共通: mag[] を使ったバーグラフ描画・周波数表示
-		// ================================================================
-
+		// draw FFT result (DMA scanline)
 		uint8_t maxIndex = 0;
 		uint16_t maxValue = 0;
 		static uint8_t bar_x[64];
 		static uint8_t bar_h[64];
 		static uint16_t bar_h_q8[64];
-		static uint8_t peak_h[64];    // ピークホールド高さ [pixel]
-		static uint8_t peak_ttl[64];  // ピーク保持カウンタ [frame]
 		static uint8_t linebuf[TFT_WIDTH * 2] = {0};
 		const uint16_t line_width = (TFT_WIDTH > 2) ? (uint16_t)(TFT_WIDTH - 2) : 0;
 
@@ -303,24 +242,13 @@ TEST_LOW
 			if (h > (uint16_t)(FFT_AREA_HEIGHT - 1)) h = (uint16_t)(FFT_AREA_HEIGHT - 1);
 			bar_x[i] = (uint8_t)(plot_left + (i * bin_step));
 			bar_h[i] = (uint8_t)h;
-			// ---- ピークホールド更新 ----
-			if (h >= peak_h[i]) {
-				peak_h[i]   = (uint8_t)h;
-				peak_ttl[i] = FFT_PEAK_HOLD_FRAMES;
-			} else if (peak_ttl[i] > 0) {
-				peak_ttl[i]--;
-			} else {
-				peak_h[i] = (uint8_t)h;
-			}
 			if (m > maxValue) {
 				maxValue = m;
 				maxIndex = i;
 			}
 		}
 		for (int i = fft_bins; i < 64; i++) {
-			bar_h_q8[i]  = 0;
-			peak_h[i]    = 0;
-			peak_ttl[i]  = 0;
+			bar_h_q8[i] = 0;
 		}
 
 		for (uint16_t y = FFT_AREA_Y_TOP; y <= FFT_AREA_Y_BOTTOM; y++) {
@@ -331,48 +259,29 @@ TEST_LOW
 			}
 			for (int i = 1; i < fft_bins; i++) {
 				uint8_t h = bar_h[i];
+				if (h == 0) continue;
+				uint16_t top = (uint16_t)(FFT_AREA_Y_BOTTOM - h);
 				uint16_t x0 = bar_x[i];
 				uint16_t x1 = (uint16_t)(x0 + bar_width - 1);
-
-				// ---- バー本体 ----
-				if (h > 0) {
-					uint16_t top = (uint16_t)(FFT_AREA_Y_BOTTOM - h);
-					if (y == top || y == FFT_AREA_Y_BOTTOM) {
-						for (uint16_t dx = 0; dx < bar_width; dx++) {
-							uint16_t px = (uint16_t)(x0 + dx);
-							if (px >= 1 && px < (TFT_WIDTH - 1)) {
-								uint16_t off = (uint16_t)((px - 1) * 2);
-								linebuf[off]     = (uint8_t)(WHITE >> 8);
-								linebuf[off + 1] = (uint8_t)WHITE;
-							}
-						}
-					} else if (y > top && y < FFT_AREA_Y_BOTTOM) {
-						if (x0 >= 1 && x0 < (TFT_WIDTH - 1)) {
-							uint16_t off = (uint16_t)((x0 - 1) * 2);
-							linebuf[off]     = (uint8_t)(WHITE >> 8);
-							linebuf[off + 1] = (uint8_t)WHITE;
-						}
-						if (x1 >= 1 && x1 < (TFT_WIDTH - 1)) {
-							uint16_t off = (uint16_t)((x1 - 1) * 2);
-							linebuf[off]     = (uint8_t)(WHITE >> 8);
+				if (y == top || y == FFT_AREA_Y_BOTTOM) {
+					for (uint16_t dx = 0; dx < bar_width; dx++) {
+						uint16_t px = (uint16_t)(x0 + dx);
+						if (px >= 1 && px < (TFT_WIDTH - 1)) {
+							uint16_t off = (uint16_t)((px - 1) * 2);
+							linebuf[off] = (uint8_t)(WHITE >> 8);
 							linebuf[off + 1] = (uint8_t)WHITE;
 						}
 					}
-				}
-
-				// ---- ピークホールドライン (バーより上にある場合のみ描画) ----
-				uint8_t ph = peak_h[i];
-				if (ph > h) {
-					uint16_t peak_y = (uint16_t)(FFT_AREA_Y_BOTTOM - ph);
-					if (y == peak_y) {
-						for (uint16_t dx = 0; dx < bar_width; dx++) {
-							uint16_t px = (uint16_t)(x0 + dx);
-							if (px >= 1 && px < (TFT_WIDTH - 1)) {
-								uint16_t off = (uint16_t)((px - 1) * 2);
-								linebuf[off]     = (uint8_t)(CYAN >> 8);
-								linebuf[off + 1] = (uint8_t)CYAN;
-							}
-						}
+				} else if (y > top && y < FFT_AREA_Y_BOTTOM) {
+					if (x0 >= 1 && x0 < (TFT_WIDTH - 1)) {
+						uint16_t off = (uint16_t)((x0 - 1) * 2);
+						linebuf[off] = (uint8_t)(WHITE >> 8);
+						linebuf[off + 1] = (uint8_t)WHITE;
+					}
+					if (x1 >= 1 && x1 < (TFT_WIDTH - 1)) {
+						uint16_t off = (uint16_t)((x1 - 1) * 2);
+						linebuf[off] = (uint8_t)(WHITE >> 8);
+						linebuf[off + 1] = (uint8_t)WHITE;
 					}
 				}
 			}
@@ -435,6 +344,7 @@ TEST_LOW
 			}
 		}
 #endif
+//TEST_LOW
 	}
 	return 0;
 }
