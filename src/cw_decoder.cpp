@@ -6,7 +6,7 @@
 #include "common.h"
 #include "goertzel.h"
 #include "decode.h"
-#include "ch32v003fun.h"
+#include "ch32fun.h"
 #include "ch32v003_GPIO_branchless.h"
 #include "cw_display.h"
 
@@ -164,7 +164,11 @@ extern "C" void TIM1_UP_IRQHandler(void)
 	}
 
 	{
+#if defined(BOARD_CH32V006)
+		uint16_t sample = (uint16_t)(funAnalogRead(2) >> 1);  // PA2 = ADC ch2 on V006
+#else
 		uint16_t sample = (uint16_t)(GPIO_analogRead(GPIO_Ain0_A2) >> 1);
+#endif
 		get_morse_buf(morseWriteBuf)[morseWriteIndex] = (int16_t)sample;
 		morseSum[morseWriteBuf] += sample;
 		morseWriteIndex++;

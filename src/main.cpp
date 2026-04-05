@@ -15,7 +15,7 @@
 ///////////////////////////////////////////////////////////////////////////
 
 ///////////////////////////////////////////////////////////////////////////
-// Goertzel 法の解説: <a href="http://en.wikipedia.org/wiki/Goertzel_algorithm" 
+// Goertzel 法の解説: <a href="http://en.wikipedia.org/wiki/Goertzel_algorithm"
 // 		title="http://en.wikipedia.org/wiki/Goertzel_algorithm"
 // 		rel="nofollow">http://en.wikipedia.org/wiki/Goertzel_algorithm</a>
 // FFT の参考: <a href="http://www.dspguide.com/pdfbook.htm"
@@ -77,36 +77,52 @@
 #include <string.h>
 
 #include "common.h"
-#include "ch32v003fun.h"
+#include "ch32fun.h"
 #include "cw_decoder.h"
 #include "frequencyDetector.h"
 
 uint16_t sampling_period_us;
+
+// ----------------------------------------------------------------
+// 共有オーディオバッファ (CW デコーダの Goertzel バッファとして両チップで使用)
 alignas(2) uint8_t  shared_buf[BUFSIZE];
+
+// ----------------------------------------------------------------
+// 周波数検出用 FFT バッファ
+//   CH32V006: float × SAMPLES × 2 = 128×4×2 = 1024 bytes
+//   CH32V003: shared_buf を兼用するため追加確保なし
+// ----------------------------------------------------------------
+#if defined(BOARD_CH32V006)
+alignas(4) float fft_real[SAMPLES];
+alignas(4) float fft_imag[SAMPLES];
+#endif
 
 //==================================================================
 //	main
 //==================================================================
 int main()
 {
-	int8_t *vReal;
-	int8_t *vImag;
-
 	SystemInit();				// ch32v003 Setup
 	GPIO_setup();				// gpio Setup;
     tft_init();					// LCD init
 
-	vReal = (int8_t *)&shared_buf[0];
-	vImag = (int8_t *)&shared_buf[128];
+#if !defined(BOARD_CH32V006)
+	// V003: shared_buf を FFT 入出力バッファとして兼用
+	int8_t *vReal = (int8_t *)&shared_buf[0];
+	int8_t *vImag = (int8_t *)&shared_buf[128];
+#endif
+
 	while (1) {
 		// cw decoder
-		cwd_setup();			// freq detector Setup
-		cwDecoder();			// run cw decoder
+		cwd_setup();
+		cwDecoder();
 		// frequency detector
-		fd_setup();				// freq detector Setup
-		freqDetector(vReal, vImag);			// run freq counter
+		fd_setup();
+#if defined(BOARD_CH32V006)
+		freqDetector(fft_real, fft_imag);
+#else
+		freqDetector(vReal, vImag);
+#endif
 	}
 	return 0;
 }
-
-

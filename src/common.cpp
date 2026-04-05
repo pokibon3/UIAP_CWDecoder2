@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include "common.h"
 #include "ch32v003_GPIO_branchless.h"
+
 void tim1_pwm_init( void )
 {
 	// Enable GPIOD and TIM1
@@ -61,10 +62,16 @@ void tim1_pwm_stop(void)
 //==================================================================
 int GPIO_setup()
 {
-    // Enable GPIO Ports A, C, D
+    // Enable GPIO ports used by pin definitions above
     GPIO_port_enable(GPIO_port_A);
     GPIO_port_enable(GPIO_port_C);
     GPIO_port_enable(GPIO_port_D);
+#if defined(BOARD_CH32V006)
+    // Enable additional ports if CH32V006 board uses them
+    // GPIO_port_enable(GPIO_port_B);
+    // GPIO_port_enable(GPIO_port_E);
+#endif
+
     // Set Pin Modes
     GPIO_pinMode(SW1_PIN, GPIO_pinMode_I_pullUp, GPIO_Speed_10MHz);
     GPIO_pinMode(SW2_PIN, GPIO_pinMode_I_pullUp, GPIO_Speed_10MHz);
@@ -79,13 +86,19 @@ int GPIO_setup()
 	GPIO_pinMode(UART_PIN, GPIO_pinMode_O_pushPullMux, GPIO_Speed_10MHz);
 	RCC->APB2PCENR |= RCC_APB2Periph_AFIO;
 
+#if defined(BOARD_CH32V006)
+	// V006: ch32fun.h の funAnalogInit() で ADC を初期化する
+	// (GPIO_branchless の GPIO_ADCinit は V003 専用のため使わない)
+	funAnalogInit();
+#else
 	GPIO_ADCinit();
+#endif
 
     return 0;
 }
 
 //==================================================================
-//	chack switch
+//	check switch
 //==================================================================
 int check_input()
 {
@@ -101,4 +114,3 @@ int check_input()
     }
     return ret;
 }
-

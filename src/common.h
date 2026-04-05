@@ -61,13 +61,28 @@
 #endif
 #endif
 
-#define SW1_PIN GPIOv_from_PORT_PIN(GPIO_port_A, 1)		// for uiap
-#define SW2_PIN GPIOv_from_PORT_PIN(GPIO_port_C, 4)		// for uiap
-#define SW3_PIN GPIOv_from_PORT_PIN(GPIO_port_D, 2)
-#define ADC_PIN GPIOv_from_PORT_PIN(GPIO_port_A, 2)		// for uiap
-#define LED_PIN GPIOv_from_PORT_PIN(GPIO_port_C, 0)		// for uiap
-#define UART_PIN GPIOv_from_PORT_PIN(GPIO_port_D, 5)
-#define TEST_PIN GPIOv_from_PORT_PIN(GPIO_port_D, 6)
+// -------------------------------------------------------
+// Pin definitions
+// -------------------------------------------------------
+#if defined(BOARD_CH32V006)
+// CH32V006 (UIAPduino Pro Micro V1.1)
+#define SW1_PIN  GPIOv_from_PORT_PIN(GPIO_port_A, 1)	// CN4-7  PA1/A1
+#define SW2_PIN  GPIOv_from_PORT_PIN(GPIO_port_C, 4)	// CN4-6  PC4/A2
+#define SW3_PIN  GPIOv_from_PORT_PIN(GPIO_port_D, 2)	// CN4-5  PD2/A3
+#define ADC_PIN  GPIOv_from_PORT_PIN(GPIO_port_A, 2)	// CN4-8  PA2/A0
+#define LED_PIN  GPIOv_from_PORT_PIN(GPIO_port_C, 3)	// CN3-6  PC3/D18/BUILTIN-LED
+#define UART_PIN GPIOv_from_PORT_PIN(GPIO_port_D, 5)	// CN3-12 PD5/TX
+#define TEST_PIN GPIOv_from_PORT_PIN(GPIO_port_D, 6)	// CN3-11 PD6/A6
+#else
+// CH32V003 (UIAPduino Pro Micro V1.4)
+#define SW1_PIN  GPIOv_from_PORT_PIN(GPIO_port_A, 1)	// CN4-7  PA1/A1
+#define SW2_PIN  GPIOv_from_PORT_PIN(GPIO_port_C, 4)	// CN4-6  PC4/A2
+#define SW3_PIN  GPIOv_from_PORT_PIN(GPIO_port_D, 2)	// CN4-5  PD2/A3
+#define ADC_PIN  GPIOv_from_PORT_PIN(GPIO_port_A, 2)	// CN4-8  PA2/A0
+#define LED_PIN  GPIOv_from_PORT_PIN(GPIO_port_C, 0)	// CN3-6  PC0/D2/BUILTIN-LED
+#define UART_PIN GPIOv_from_PORT_PIN(GPIO_port_D, 5)	// CN3-12 PD5/TX
+#define TEST_PIN GPIOv_from_PORT_PIN(GPIO_port_D, 6)	// CN3-11 PD6/A6
+#endif
 
 #define TEST_HIGH			GPIO_digitalWrite(TEST_PIN, high);
 #define TEST_LOW			GPIO_digitalWrite(TEST_PIN, low);
