@@ -10,10 +10,15 @@ static const uint8_t SW1_PIN = 1; // PA1
 static const uint8_t SW2_PIN = 4; // PC4
 static const uint8_t SW3_PIN = 2; // PD2
 static const uint8_t ADC_PIN = 2; // PA2 (ADC_IN0)
-static const uint8_t LED_PIN = 0; // PC0
+#if defined(BOARD_CH32V006)
+static const uint8_t LED_PIN = 3; // PC3 (UIAPduino V006)
+static const uint8_t ADC_CH_A2 = 2; // PA2 = ADC_IN2 on CH32V006
+#else
+static const uint8_t LED_PIN = 0; // PC0 (UIAPduino V003)
+static const uint8_t ADC_CH_A2 = 0; // PA2 = ADC_IN0 on CH32V003
+#endif
 static const uint8_t UART_PIN = 5; // PD5
 static const uint8_t TEST_PIN = 6; // PD6
-static const uint8_t ADC_CH_A2 = 0; // PA2 = ADC_IN0 on CH32V003
 
 // GPIO CFGLR nibble encodings (MODE[1:0] + CNF[1:0] << 2)
 static const uint8_t GPIO_CFG_INPUT_ANALOG = 0x0;
