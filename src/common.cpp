@@ -11,7 +11,6 @@ static const uint8_t SW2_PIN = 4; // PC4
 static const uint8_t SW3_PIN = 2; // PD2
 static const uint8_t ADC_PIN = 2; // PA2 (ADC_IN0)
 #if defined(BOARD_CH32V006)
-static const uint8_t LED_PIN = 3; // PC3 (UIAPduino V006)
 static const uint8_t ADC_CH_A2 = 2; // PA2 = ADC_IN2 on CH32V006
 #else
 static const uint8_t LED_PIN = 0; // PC0 (UIAPduino V003)
@@ -128,11 +127,16 @@ int GPIO_setup()
 	// ADC input: analog.
 	gpio_cfg_pin(GPIOA, ADC_PIN, GPIO_CFG_INPUT_ANALOG);
 
-	// LED / TEST: output push-pull.
-	gpio_cfg_pin(GPIOC, LED_PIN, GPIO_CFG_OUTPUT_PP_10M);
+	// TEST: output push-pull.
 	gpio_cfg_pin(GPIOD, TEST_PIN, GPIO_CFG_OUTPUT_PP_10M);
-	gpio_write(GPIOC, LED_PIN, GPIO_LOW);
 	gpio_write(GPIOD, TEST_PIN, GPIO_LOW);
+
+#if !defined(BOARD_CH32V006)
+	// CH32V006 uses PC3 as the LCD CS line in this project, so leave the
+	// onboard LED untouched there to avoid corrupting display transactions.
+	gpio_cfg_pin(GPIOC, LED_PIN, GPIO_CFG_OUTPUT_PP_10M);
+	gpio_write(GPIOC, LED_PIN, GPIO_LOW);
+#endif
 
 	// UART TX pin: alternate function push-pull.
 	gpio_cfg_pin(GPIOD, UART_PIN, GPIO_CFG_OUTPUT_AF_PP_10M);
@@ -183,7 +187,11 @@ uint16_t adc_capture_u8(int8_t *dst, uint16_t samples, uint16_t sample_period_us
 
 void gpio_write_led(uint8_t level)
 {
+#if !defined(BOARD_CH32V006)
 	gpio_write(GPIOC, LED_PIN, level);
+#else
+	(void)level;
+#endif
 }
 
 void gpio_write_test(uint8_t level)
