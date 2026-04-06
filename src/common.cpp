@@ -112,7 +112,6 @@ static void adc_init_ch0(void)
 static inline uint16_t adc_read_ch0_raw()
 {
 	ADC1->RSQR3 = ADC_CH_A2;
-	Delay_Us(GPIO_ADC_MUX_DELAY);
 #if defined(BOARD_CH32V006)
 	ADC1->CTLR2 |= ADC_ADON;
 #endif
