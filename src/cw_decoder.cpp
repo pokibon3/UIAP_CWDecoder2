@@ -59,13 +59,8 @@ static void reset_morse_buffers(void)
 	morseReady[1] = 0;
 }
 
-extern "C" void TIM1_UP_IRQHandler(void) __attribute__((interrupt));
-extern "C" void TIM1_UP_IRQHandler(void)
+static void push_morse_sample(uint16_t sample)
 {
-	if (TIM1->INTFR & TIM_IT_Update) {
-		TIM1->INTFR = (uint16_t)~TIM_IT_Update;
-	}
-
 	if (morseReady[morseWriteBuf]) {
 		uint8_t next = morseWriteBuf ^ 1;
 		if (!morseReady[next]) {
@@ -82,23 +77,30 @@ extern "C" void TIM1_UP_IRQHandler(void)
 		morseSum[morseWriteBuf] = 0;
 	}
 
-	{
-		uint16_t sample = (uint16_t)(adc_read_raw() >> 1);
-		get_morse_buf(morseWriteBuf)[morseWriteIndex] = (int16_t)sample;
-		morseSum[morseWriteBuf] += sample;
-		morseWriteIndex++;
-		if (morseWriteIndex >= GOERTZEL_SAMPLES) {
-			morseReady[morseWriteBuf] = 1;
-			uint8_t next = morseWriteBuf ^ 1;
-			if (!morseReady[next]) {
-				morseWriteBuf = next;
-				morseWriteIndex = 0;
-				morseSum[morseWriteBuf] = 0;
-			} else {
-				morseWriteIndex = GOERTZEL_SAMPLES;
-			}
+	get_morse_buf(morseWriteBuf)[morseWriteIndex] = (int16_t)sample;
+	morseSum[morseWriteBuf] += sample;
+	morseWriteIndex++;
+	if (morseWriteIndex >= GOERTZEL_SAMPLES) {
+		morseReady[morseWriteBuf] = 1;
+		uint8_t next = morseWriteBuf ^ 1;
+		if (!morseReady[next]) {
+			morseWriteBuf = next;
+			morseWriteIndex = 0;
+			morseSum[morseWriteBuf] = 0;
+		} else {
+			morseWriteIndex = GOERTZEL_SAMPLES;
 		}
 	}
+}
+
+extern "C" void TIM1_UP_IRQHandler(void) __attribute__((interrupt));
+extern "C" void TIM1_UP_IRQHandler(void)
+{
+	if (TIM1->INTFR & TIM_IT_Update) {
+		TIM1->INTFR = (uint16_t)~TIM_IT_Update;
+	}
+
+	push_morse_sample((uint16_t)(adc_read_raw() >> 1));
 }
 
 //==================================================================
@@ -186,6 +188,9 @@ int cwd_setup()
 	initGoertzel(speed);
 	sampling_period_us = 900000 / GOERTZEL_SAMPLING_FREQUENCY;
 	reset_morse_buffers();
+	wpm = 0;
+	cw_display_update_info(wpm, (uint8_t)sw, speed);
+	cw_display_tick();
 	tim1_pwm_init();
 	return 0;
 }
@@ -229,12 +234,15 @@ int cwDecoder(void)
 {
 	int32_t magnitude;
 	cw_display_reset_decoder_view();
+	cw_display_update_info(wpm, (uint8_t)sw, speed);
+	cw_display_tick();
 
 	while(1) {
 		if (check_sw() == 1) {
 			break;
 		}
 		if (!morseReady[0] && !morseReady[1]) {
+			cw_display_tick();
 			continue;
 		}
 
