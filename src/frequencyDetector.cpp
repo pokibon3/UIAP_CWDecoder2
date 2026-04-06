@@ -75,6 +75,10 @@ int fd_setup()
     tim1_pwm_stop();
     sampling_period_us = 900000L / FD_SAMPLING_FREQUENCY;
     //sampling_period_us = 1000000L / FD_SAMPLING_FREQUENCY;
+#if defined(BOARD_CH32V006)
+    adc_set_polled_mode();
+    tim1_pwm_init();
+#endif
 
 	// display title
 	tft_fill_rect(0, 0, TFT_WIDTH, TFT_HEIGHT, BLACK);
@@ -109,6 +113,11 @@ int freqDetector(int8_t *vReal, int8_t *vImag)
 	uint8_t  oldHasSignal = 0;
 	uint32_t lastSignalMs = 0;
 	char buf[16];
+#if defined(BOARD_CH32V006)
+	uint32_t irq_count_last = 0;
+	uint32_t irq_rate_last_ms = 0;
+	uint32_t irq_rate_hz = 0;
+#endif
 
 	tft_fill_rect(0, 0, TFT_WIDTH, TFT_HEIGHT, BLACK);
 	tft_draw_rect(0, 0, TFT_WIDTH, FFT_FRAME_HEIGHT, BLUE);
@@ -199,10 +208,37 @@ TEST_HIGH
 		ave = adc_capture_u8(vImag, SAMPLES, sampling_period_us);
 TEST_LOW
 		//printf("ave = %d\n", ave);
+#if defined(BOARD_CH32V006)
+		int16_t centered_buf[SAMPLES];
+		int16_t peak_abs = 0;
+#endif
 		for (int i = 0; i < SAMPLES; i++) {
-			vReal[i] = (int8_t)(vImag[i] - ave);
+			int16_t centered;
+#if defined(BOARD_CH32V006)
+			centered = (int16_t)((uint8_t)vImag[i]) - (int16_t)ave;
+			centered_buf[i] = centered;
+			int16_t abs_centered = (centered < 0) ? (int16_t)(-centered) : centered;
+			if (abs_centered > peak_abs) peak_abs = abs_centered;
+#else
+			centered = (int16_t)vImag[i] - (int16_t)ave;
 			vImag[i] = 0; // Imaginary partは0に初期化
+#endif
+			vReal[i] = (int8_t)centered;
 		}
+#if defined(BOARD_CH32V006)
+		uint8_t shift = 0;
+		while (peak_abs > 63 && shift < 4) {
+			peak_abs >>= 1;
+			shift++;
+		}
+		for (int i = 0; i < SAMPLES; i++) {
+			int16_t centered = centered_buf[i] >> shift;
+			if (centered > 127) centered = 127;
+			if (centered < -128) centered = -128;
+			vReal[i] = (int8_t)centered;
+			vImag[i] = 0;
+		}
+#endif
 //TEST_HIGH
 		// FFT
   		fix_fft((char *)vReal, (char *)vImag, 7, 0); // SAMPLES = 256なので、log2(SAMPLES) = 8
@@ -228,7 +264,11 @@ TEST_LOW
 
 		for (int i = 1; i < fft_bins; i++) {
 			uint16_t m = mag[i];
-			uint32_t target = ((uint32_t)m * (uint32_t)SCALE * FFT_Y_GAIN_NUM * 256U + (FFT_Y_GAIN_DEN / 2U)) / FFT_Y_GAIN_DEN;
+			uint32_t gain_num = FFT_Y_GAIN_NUM;
+#if defined(BOARD_CH32V006)
+			gain_num = 1U;
+#endif
+			uint32_t target = ((uint32_t)m * (uint32_t)SCALE * gain_num * 256U + (FFT_Y_GAIN_DEN / 2U)) / FFT_Y_GAIN_DEN;
 			uint32_t max_q8 = (uint32_t)(FFT_AREA_HEIGHT - 1) * 256U;
 			if (target > max_q8) target = max_q8;
 			// Fast attack / slow release to reduce visible stair-step flicker.
@@ -296,6 +336,18 @@ TEST_LOW
 		peakFrequency = (FD_SAMPLING_FREQUENCY / SAMPLES) * maxIndex;
 		{
 			uint32_t now = millis();
+#if defined(BOARD_CH32V006)
+			if (irq_rate_last_ms == 0) {
+				irq_rate_last_ms = now;
+				irq_count_last = adc_get_irq_count_v006();
+			} else if ((now - irq_rate_last_ms) >= 250U) {
+				uint32_t irq_count_now = adc_get_irq_count_v006();
+				uint32_t delta = irq_count_now - irq_count_last;
+				irq_rate_hz = (delta * 1000U) / (now - irq_rate_last_ms);
+				irq_count_last = irq_count_now;
+				irq_rate_last_ms = now;
+			}
+#endif
 			uint8_t hasSignal = (maxValue >= 4) ? 1 : 0;
 			uint8_t showSignal = hasSignal;
 			uint16_t displayFrequency = oldFreequency;
@@ -343,6 +395,14 @@ TEST_LOW
 				tft_set_color(WHITE);
 			}
 		}
+#endif
+#if defined(BOARD_CH32V006)
+		tft_set_color(GREEN);
+		tft_fill_rect(2, 2, 12 * 8, 8, BLACK);
+		tft_set_cursor(2, 2);
+		mini_snprintf(buf, sizeof(buf), "Fs:%5lu", irq_rate_hz);
+		tft_print(buf, FONT_SCALE_8X8);
+		tft_set_color(WHITE);
 #endif
 //TEST_LOW
 	}
