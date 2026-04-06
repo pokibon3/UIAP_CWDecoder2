@@ -5,15 +5,46 @@
 #include "common.h"
 #include "ch32fun.h"
 
+#if defined(BOARD_CH32V006)
+#ifndef TIM_OC1M_2
+#define TIM_OC1M_2 ((uint16_t)0x0040)
+#endif
+#ifndef TIM_OC1M_1
+#define TIM_OC1M_1 ((uint16_t)0x0020)
+#endif
+#ifndef TIM_OC1PE
+#define TIM_OC1PE ((uint16_t)0x0008)
+#endif
+#ifndef TIM_ARPE
+#define TIM_ARPE ((uint16_t)0x0080)
+#endif
+#ifndef TIM_CC1E
+#define TIM_CC1E ((uint16_t)0x0001)
+#endif
+#ifndef TIM_UG
+#define TIM_UG ((uint16_t)0x0001)
+#endif
+#ifndef TIM_MOE
+#define TIM_MOE ((uint16_t)0x8000)
+#endif
+#ifndef TIM_CEN
+#define TIM_CEN ((uint16_t)0x0001)
+#endif
+#endif
+
 // Pin mapping (UIAP board)
 static const uint8_t SW1_PIN = 1; // PA1
 static const uint8_t SW2_PIN = 4; // PC4
 static const uint8_t SW3_PIN = 2; // PD2
 static const uint8_t ADC_PIN = 2; // PA2 (ADC_IN0)
+#if defined(BOARD_CH32V006)
+static const uint8_t ADC_CH_A2 = 2; // PA2 = ADC_IN2 on CH32V006
+#else
 static const uint8_t LED_PIN = 0; // PC0
+static const uint8_t ADC_CH_A2 = 0; // PA2 = ADC_IN0 on CH32V003
+#endif
 static const uint8_t UART_PIN = 5; // PD5
 static const uint8_t TEST_PIN = 6; // PD6
-static const uint8_t ADC_CH_A2 = 0; // PA2 = ADC_IN0 on CH32V003
 
 // GPIO CFGLR nibble encodings (MODE[1:0] + CNF[1:0] << 2)
 static const uint8_t GPIO_CFG_INPUT_ANALOG = 0x0;
@@ -123,11 +154,15 @@ int GPIO_setup()
 	// ADC input: analog.
 	gpio_cfg_pin(GPIOA, ADC_PIN, GPIO_CFG_INPUT_ANALOG);
 
-	// LED / TEST: output push-pull.
-	gpio_cfg_pin(GPIOC, LED_PIN, GPIO_CFG_OUTPUT_PP_10M);
+	// TEST: output push-pull.
 	gpio_cfg_pin(GPIOD, TEST_PIN, GPIO_CFG_OUTPUT_PP_10M);
-	gpio_write(GPIOC, LED_PIN, GPIO_LOW);
 	gpio_write(GPIOD, TEST_PIN, GPIO_LOW);
+
+#if !defined(BOARD_CH32V006)
+	// Keep CH32V003 behavior exactly as before.
+	gpio_cfg_pin(GPIOC, LED_PIN, GPIO_CFG_OUTPUT_PP_10M);
+	gpio_write(GPIOC, LED_PIN, GPIO_LOW);
+#endif
 
 	// UART TX pin: alternate function push-pull.
 	gpio_cfg_pin(GPIOD, UART_PIN, GPIO_CFG_OUTPUT_AF_PP_10M);
@@ -178,7 +213,11 @@ uint16_t adc_capture_u8(int8_t *dst, uint16_t samples, uint16_t sample_period_us
 
 void gpio_write_led(uint8_t level)
 {
+#if !defined(BOARD_CH32V006)
 	gpio_write(GPIOC, LED_PIN, level);
+#else
+	(void)level;
+#endif
 }
 
 void gpio_write_test(uint8_t level)

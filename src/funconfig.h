@@ -14,7 +14,8 @@
 #define FUNCONF_USE_UARTPRINTF  1
 #define FUNCONF_UART_PRINTF_BAUD 115200
 
+#if !defined(BOARD_CH32V006)
 #define CH32V003           1
-
 #endif
 
+#endif
