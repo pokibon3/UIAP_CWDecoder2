@@ -75,10 +75,6 @@ int fd_setup()
     tim1_pwm_stop();
     sampling_period_us = 900000L / FD_SAMPLING_FREQUENCY;
     //sampling_period_us = 1000000L / FD_SAMPLING_FREQUENCY;
-#if defined(BOARD_CH32V006)
-    adc_set_polled_mode();
-    tim1_pwm_init();
-#endif
 
 	// display title
 	tft_fill_rect(0, 0, TFT_WIDTH, TFT_HEIGHT, BLACK);
@@ -113,11 +109,6 @@ int freqDetector(int8_t *vReal, int8_t *vImag)
 	uint8_t  oldHasSignal = 0;
 	uint32_t lastSignalMs = 0;
 	char buf[16];
-#if defined(BOARD_CH32V006)
-	uint32_t irq_count_last = 0;
-	uint32_t irq_rate_last_ms = 0;
-	uint32_t irq_rate_hz = 0;
-#endif
 
 	tft_fill_rect(0, 0, TFT_WIDTH, TFT_HEIGHT, BLACK);
 	tft_draw_rect(0, 0, TFT_WIDTH, FFT_FRAME_HEIGHT, BLUE);
@@ -336,18 +327,6 @@ TEST_LOW
 		peakFrequency = (FD_SAMPLING_FREQUENCY / SAMPLES) * maxIndex;
 		{
 			uint32_t now = millis();
-#if defined(BOARD_CH32V006)
-			if (irq_rate_last_ms == 0) {
-				irq_rate_last_ms = now;
-				irq_count_last = adc_get_irq_count_v006();
-			} else if ((now - irq_rate_last_ms) >= 250U) {
-				uint32_t irq_count_now = adc_get_irq_count_v006();
-				uint32_t delta = irq_count_now - irq_count_last;
-				irq_rate_hz = (delta * 1000U) / (now - irq_rate_last_ms);
-				irq_count_last = irq_count_now;
-				irq_rate_last_ms = now;
-			}
-#endif
 			uint8_t hasSignal = (maxValue >= 4) ? 1 : 0;
 			uint8_t showSignal = hasSignal;
 			uint16_t displayFrequency = oldFreequency;
@@ -395,14 +374,6 @@ TEST_LOW
 				tft_set_color(WHITE);
 			}
 		}
-#endif
-#if defined(BOARD_CH32V006)
-		tft_set_color(GREEN);
-		tft_fill_rect(2, 2, 12 * 8, 8, BLACK);
-		tft_set_cursor(2, 2);
-		mini_snprintf(buf, sizeof(buf), "Fs:%5lu", irq_rate_hz);
-		tft_print(buf, FONT_SCALE_8X8);
-		tft_set_color(WHITE);
 #endif
 //TEST_LOW
 	}

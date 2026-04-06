@@ -100,26 +100,8 @@ extern "C" void TIM1_UP_IRQHandler(void)
 		TIM1->INTFR = (uint16_t)~TIM_IT_Update;
 	}
 
-#if !defined(BOARD_CH32V006)
 	push_morse_sample((uint16_t)(adc_read_raw() >> 1));
-#endif
 }
-
-#if defined(BOARD_CH32V006)
-extern "C" void ADC1_IRQHandler(void) __attribute__((interrupt));
-extern "C" void ADC1_IRQHandler(void)
-{
-	if (ADC1->STATR & ADC_EOC) {
-		ADC1->STATR = (uint16_t)~ADC_EOC;
-		uint16_t sample = (uint16_t)ADC1->RDATAR;
-		if (adc_get_mode_v006() == 1) {
-			push_morse_sample((uint16_t)(sample >> 1));
-		} else if (adc_get_mode_v006() == 2) {
-			adc_push_sample_v006(sample);
-		}
-	}
-}
-#endif
 
 //==================================================================
 // gap を 1単位 hightimesavg の相対値で分類
@@ -206,9 +188,6 @@ int cwd_setup()
 	initGoertzel(speed);
 	sampling_period_us = 900000 / GOERTZEL_SAMPLING_FREQUENCY;
 	reset_morse_buffers();
-#if defined(BOARD_CH32V006)
-	adc_set_cw_mode();
-#endif
 	wpm = 0;
 	cw_display_update_info(wpm, (uint8_t)sw, speed);
 	cw_display_tick();

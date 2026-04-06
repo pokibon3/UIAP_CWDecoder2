@@ -83,14 +83,5 @@ extern int check_input();
 
 extern void tim1_pwm_init(void);
 extern void tim1_pwm_stop(void);
-#if defined(BOARD_CH32V006)
-extern void adc_set_cw_mode(void);
-extern void adc_set_polled_mode(void);
-extern uint8_t adc_get_mode_v006(void);
-extern int adc_pop_u8_v006(int8_t *dst, uint16_t samples, uint16_t *average);
-extern void adc_push_sample_v006(uint16_t sample);
-extern uint32_t adc_get_irq_count_v006(void);
-extern void adc_reset_irq_count_v006(void);
-#endif
 
 extern "C" void TIM1_UP_IRQHandler(void) __attribute__((interrupt));
