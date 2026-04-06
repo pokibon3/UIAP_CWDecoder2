@@ -90,28 +90,37 @@
 uint16_t sampling_period_us;
 alignas(2) uint8_t  shared_buf[BUFSIZE];
 
+#if defined(BOARD_CH32V006)
+alignas(4) float fft_real[SAMPLES];
+alignas(4) float fft_imag[SAMPLES];
+#endif
+
 //==================================================================
 //	main
 //==================================================================
 int main()
 {
-	int8_t *vReal;
-	int8_t *vImag;
-
 	SystemInit();				// MCU setup
 	GPIO_setup();				// GPIO/ADC setup
     tft_init();					// LCD init
 
+#if !defined(BOARD_CH32V006)
+	int8_t *vReal;
+	int8_t *vImag;
 	vReal = (int8_t *)&shared_buf[0];
 	vImag = (int8_t *)&shared_buf[128];
+#endif
 	while (1) {
 		// cw decoder
 		cwd_setup();			// freq detector Setup
 		cwDecoder();			// run cw decoder
 		// frequency detector
 		fd_setup();				// freq detector Setup
+#if defined(BOARD_CH32V006)
+		freqDetector(fft_real, fft_imag);			// run freq counter
+#else
 		freqDetector(vReal, vImag);			// run freq counter
+#endif
 	}
 	return 0;
 }
-

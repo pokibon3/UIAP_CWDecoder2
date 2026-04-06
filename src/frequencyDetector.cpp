@@ -8,13 +8,20 @@
 
 #include "common.h"
 #include "frequencyDetector.h"
-#include "fix_fft.h"
 #include "ch32fun.h"
+
+#if defined(BOARD_CH32V006)
+#include "float_fft.h"
+#include <math.h>
+#else
+#include "fix_fft.h"
+#endif
 
 #define FD_SAMPLING_FREQUENCY 6000	// Hz	+10%
 #define FFT_FPS_MEASURE 0
+#define FFT_PEAK_HOLD_FRAMES 20
 
-// integer sqrt: floor(sqrt(x))
+#if !defined(BOARD_CH32V006)
 static uint32_t isqrt32(uint32_t x)
 {
 	uint32_t op = x;
@@ -34,8 +41,8 @@ static uint32_t isqrt32(uint32_t x)
 	}
 	return res;
 }
+#endif
 
-// 画面レイアウト用マクロ
 #define FFT_FRAME_HEIGHT    (TFT_HEIGHT - 8)
 #define FFT_AREA_Y_TOP      ((TFT_HEIGHT * 19) / 80)
 #define FFT_AREA_Y_BOTTOM   ((TFT_HEIGHT * 70) / 80)
@@ -44,15 +51,6 @@ static uint32_t isqrt32(uint32_t x)
 #define FFT_Y_GAIN_NUM      3U
 #define FFT_Y_GAIN_DEN      1U
 
-// タイトル文字列
-//static char title1[]   = "Freq.Detector";
-//static char title2[]   = "  for UIAP   ";
-//static char title3[]   = " Version 1.0";
-
-
-//==================================================================
-//	chack switch
-//==================================================================
 static int check_sw()
 {
     int ret = 0;
@@ -66,43 +64,22 @@ static int check_sw()
     return ret;
 }
 
-
-//==================================================================
-//	freq_detector setup
-//==================================================================
 int fd_setup()
 {
     tim1_pwm_stop();
     sampling_period_us = 900000L / FD_SAMPLING_FREQUENCY;
-    //sampling_period_us = 1000000L / FD_SAMPLING_FREQUENCY;
 
-	// display title
 	tft_fill_rect(0, 0, TFT_WIDTH, TFT_HEIGHT, BLACK);
-
-/*
-	tft_set_color(BLUE);
-	tft_set_cursor(0, 10);
-	tft_print(title1, FONT_SCALE_16X16);
-
-	tft_set_color(RED);
-	tft_set_cursor(0, 30);
-	tft_print(title2, FONT_SCALE_16X16);
-
-	tft_set_cursor(0, 50);
-	tft_set_color(GREEN);
-	tft_print(title3, FONT_SCALE_16X16);
-	Delay_Ms( 1000 );
-*/
 	tft_set_color(WHITE);
-
 
     return 0;
 }
 
-//==================================================================
-//  adc and fft for freq counter
-//==================================================================
-int freqDetector(int8_t *vReal, int8_t *vImag) 
+#if defined(BOARD_CH32V006)
+int freqDetector(float *vReal, float *vImag)
+#else
+int freqDetector(int8_t *vReal, int8_t *vImag)
+#endif
 {
 	uint16_t peakFrequency = 0;
 	uint16_t oldFreequency = 0;
@@ -113,7 +90,7 @@ int freqDetector(int8_t *vReal, int8_t *vImag)
 	tft_fill_rect(0, 0, TFT_WIDTH, TFT_HEIGHT, BLACK);
 	tft_draw_rect(0, 0, TFT_WIDTH, FFT_FRAME_HEIGHT, BLUE);
 
-	uint8_t  fft_bins = (uint8_t)(SAMPLES / 2);
+	uint8_t fft_bins = (uint8_t)(SAMPLES / 2);
 #if !defined(TFT_ST7735)
 	if (fft_bins > 64) fft_bins = 64;
 #endif
@@ -160,7 +137,6 @@ int freqDetector(int8_t *vReal, int8_t *vImag)
 	uint16_t value_area_x = plot_left + (plot_width / 2);
 	uint16_t value_text_base = value_area_x + 2;
 
-	// Place labels near guide lines.
 	tft_set_color(BLUE);
 	const char* label0 = "0Hz";
 	const char* label1 = "1KHz";
@@ -182,8 +158,7 @@ int freqDetector(int8_t *vReal, int8_t *vImag)
 	tft_set_cursor(x2, FFT_LABEL_Y);
 	tft_print(label2, FONT_SCALE_8X8);
 
-	while(1) {
-		uint16_t ave = 0;
+	while (1) {
 		uint16_t mag[SAMPLES / 2];
 #if FFT_FPS_MEASURE
 		static uint32_t fps_last_ms = 0;
@@ -194,60 +169,54 @@ int freqDetector(int8_t *vReal, int8_t *vImag)
 		if (check_sw() == 1) {
             break;
         }
+
 TEST_HIGH
-		// input audio
-		ave = adc_capture_u8(vImag, SAMPLES, sampling_period_us);
+#if defined(BOARD_CH32V006)
+		float fave = 0.0f;
+		for (int i = 0; i < SAMPLES; i++) {
+			uint32_t t = micros();
+			uint8_t val = (uint8_t)((adc_read_raw() >> 2) & 0xFF);
+			fave += (float)val;
+			vReal[i] = (float)val;
+			while ((micros() - t) < sampling_period_us);
+		}
 TEST_LOW
-		//printf("ave = %d\n", ave);
-#if defined(BOARD_CH32V006)
-		int16_t centered_buf[SAMPLES];
-		int16_t peak_abs = 0;
-#endif
+		fave /= (float)SAMPLES;
 		for (int i = 0; i < SAMPLES; i++) {
-			int16_t centered;
-#if defined(BOARD_CH32V006)
-			centered = (int16_t)((uint8_t)vImag[i]) - (int16_t)ave;
-			centered_buf[i] = centered;
-			int16_t abs_centered = (centered < 0) ? (int16_t)(-centered) : centered;
-			if (abs_centered > peak_abs) peak_abs = abs_centered;
+			vReal[i] -= fave;
+			vImag[i] = 0.0f;
+		}
+		float_fft(vReal, vImag, 7);
+		{
+			const float norm = 1.0f / (float)SAMPLES;
+			for (int i = 0; i < SAMPLES / 2; i++) {
+				float m = sqrtf(vReal[i] * vReal[i] + vImag[i] * vImag[i]) * norm;
+				mag[i] = (m > 65535.0f) ? 65535U : (uint16_t)m;
+			}
+		}
 #else
-			centered = (int16_t)vImag[i] - (int16_t)ave;
-			vImag[i] = 0; // Imaginary partは0に初期化
-#endif
-			vReal[i] = (int8_t)centered;
-		}
-#if defined(BOARD_CH32V006)
-		uint8_t shift = 0;
-		while (peak_abs > 63 && shift < 4) {
-			peak_abs >>= 1;
-			shift++;
-		}
+		uint16_t ave = adc_capture_u8(vImag, SAMPLES, sampling_period_us);
+TEST_LOW
 		for (int i = 0; i < SAMPLES; i++) {
-			int16_t centered = centered_buf[i] >> shift;
-			if (centered > 127) centered = 127;
-			if (centered < -128) centered = -128;
-			vReal[i] = (int8_t)centered;
+			vReal[i] = (int8_t)(vImag[i] - ave);
 			vImag[i] = 0;
 		}
-#endif
-//TEST_HIGH
-		// FFT
-  		fix_fft((char *)vReal, (char *)vImag, 7, 0); // SAMPLES = 256なので、log2(SAMPLES) = 8
-//TEST_HIGH
-		// Magnitude Calculation
+  		fix_fft((char *)vReal, (char *)vImag, 7, 0);
 		for (int i = 0; i < SAMPLES / 2; i++) {
 			int16_t vr = vReal[i];
 			int16_t vi = vImag[i];
 			uint32_t mag2 = (uint32_t)(vr * vr) + (uint32_t)(vi * vi);
-			uint16_t m = (uint16_t)isqrt32(mag2);
-			mag[i] = m;
+			mag[i] = (uint16_t)isqrt32(mag2);
 		}
-		// draw FFT result (DMA scanline)
+#endif
+
 		uint8_t maxIndex = 0;
 		uint16_t maxValue = 0;
 		static uint8_t bar_x[64];
 		static uint8_t bar_h[64];
 		static uint16_t bar_h_q8[64];
+		static uint8_t peak_h[64];
+		static uint8_t peak_ttl[64];
 		static uint8_t linebuf[TFT_WIDTH * 2] = {0};
 		const uint16_t line_width = (TFT_WIDTH > 2) ? (uint16_t)(TFT_WIDTH - 2) : 0;
 
@@ -256,23 +225,26 @@ TEST_LOW
 		for (int i = 1; i < fft_bins; i++) {
 			uint16_t m = mag[i];
 			uint32_t gain_num = FFT_Y_GAIN_NUM;
-#if defined(BOARD_CH32V006)
-			gain_num = 1U;
-#endif
-			uint32_t target = ((uint32_t)m * (uint32_t)SCALE * gain_num * 256U + (FFT_Y_GAIN_DEN / 2U)) / FFT_Y_GAIN_DEN;
-			uint32_t max_q8 = (uint32_t)(FFT_AREA_HEIGHT - 1) * 256U;
-			if (target > max_q8) target = max_q8;
-			// Fast attack / slow release to reduce visible stair-step flicker.
-			if (target >= bar_h_q8[i]) {
-				bar_h_q8[i] = (uint16_t)(bar_h_q8[i] + ((target - bar_h_q8[i] + 1U) / 2U));
+			uint32_t gain_den = FFT_Y_GAIN_DEN * 16U;
+			uint32_t target_q8 = ((uint32_t)m * (uint32_t)SCALE * gain_num * 256U + (gain_den / 2U)) / gain_den;
+			if (target_q8 >= bar_h_q8[i]) {
+				bar_h_q8[i] = (uint16_t)(bar_h_q8[i] + (((target_q8 - bar_h_q8[i]) * 7U + 7U) / 8U));
 			} else {
-				bar_h_q8[i] = (uint16_t)(bar_h_q8[i] - ((bar_h_q8[i] - target + 3U) / 4U));
+				bar_h_q8[i] = (uint16_t)(bar_h_q8[i] - (((bar_h_q8[i] - target_q8) * 3U + 3U) / 4U));
 			}
-			uint16_t h = (uint16_t)((bar_h_q8[i] + 128U) >> 8);
+			uint32_t h = (bar_h_q8[i] + 128U) >> 8;
 			if (h == 0 && m > 0) h = 1;
 			if (h > (uint16_t)(FFT_AREA_HEIGHT - 1)) h = (uint16_t)(FFT_AREA_HEIGHT - 1);
 			bar_x[i] = (uint8_t)(plot_left + (i * bin_step));
 			bar_h[i] = (uint8_t)h;
+			if (h >= peak_h[i]) {
+				peak_h[i] = (uint8_t)h;
+				peak_ttl[i] = FFT_PEAK_HOLD_FRAMES;
+			} else if (peak_ttl[i] > 0) {
+				peak_ttl[i]--;
+			} else {
+				peak_h[i] = (uint8_t)h;
+			}
 			if (m > maxValue) {
 				maxValue = m;
 				maxIndex = i;
@@ -280,6 +252,8 @@ TEST_LOW
 		}
 		for (int i = fft_bins; i < 64; i++) {
 			bar_h_q8[i] = 0;
+			peak_h[i] = 0;
+			peak_ttl[i] = 0;
 		}
 
 		for (uint16_t y = FFT_AREA_Y_TOP; y <= FFT_AREA_Y_BOTTOM; y++) {
@@ -290,29 +264,45 @@ TEST_LOW
 			}
 			for (int i = 1; i < fft_bins; i++) {
 				uint8_t h = bar_h[i];
-				if (h == 0) continue;
-				uint16_t top = (uint16_t)(FFT_AREA_Y_BOTTOM - h);
 				uint16_t x0 = bar_x[i];
 				uint16_t x1 = (uint16_t)(x0 + bar_width - 1);
-				if (y == top || y == FFT_AREA_Y_BOTTOM) {
-					for (uint16_t dx = 0; dx < bar_width; dx++) {
-						uint16_t px = (uint16_t)(x0 + dx);
-						if (px >= 1 && px < (TFT_WIDTH - 1)) {
-							uint16_t off = (uint16_t)((px - 1) * 2);
+
+				if (h > 0) {
+					uint16_t top = (uint16_t)(FFT_AREA_Y_BOTTOM - h);
+					if (y == top || y == FFT_AREA_Y_BOTTOM) {
+						for (uint16_t dx = 0; dx < bar_width; dx++) {
+							uint16_t px = (uint16_t)(x0 + dx);
+							if (px >= 1 && px < (TFT_WIDTH - 1)) {
+								uint16_t off = (uint16_t)((px - 1) * 2);
+								linebuf[off] = (uint8_t)(WHITE >> 8);
+								linebuf[off + 1] = (uint8_t)WHITE;
+							}
+						}
+					} else if (y > top && y < FFT_AREA_Y_BOTTOM) {
+						if (x0 >= 1 && x0 < (TFT_WIDTH - 1)) {
+							uint16_t off = (uint16_t)((x0 - 1) * 2);
+							linebuf[off] = (uint8_t)(WHITE >> 8);
+							linebuf[off + 1] = (uint8_t)WHITE;
+						}
+						if (x1 >= 1 && x1 < (TFT_WIDTH - 1)) {
+							uint16_t off = (uint16_t)((x1 - 1) * 2);
 							linebuf[off] = (uint8_t)(WHITE >> 8);
 							linebuf[off + 1] = (uint8_t)WHITE;
 						}
 					}
-				} else if (y > top && y < FFT_AREA_Y_BOTTOM) {
-					if (x0 >= 1 && x0 < (TFT_WIDTH - 1)) {
-						uint16_t off = (uint16_t)((x0 - 1) * 2);
-						linebuf[off] = (uint8_t)(WHITE >> 8);
-						linebuf[off + 1] = (uint8_t)WHITE;
-					}
-					if (x1 >= 1 && x1 < (TFT_WIDTH - 1)) {
-						uint16_t off = (uint16_t)((x1 - 1) * 2);
-						linebuf[off] = (uint8_t)(WHITE >> 8);
-						linebuf[off + 1] = (uint8_t)WHITE;
+				}
+
+				uint8_t ph = peak_h[i];
+				if (ph > 0) {
+					uint16_t peak_y = (uint16_t)(FFT_AREA_Y_BOTTOM - ph);
+					if (y == peak_y) {
+						for (uint16_t px = x0; px <= x1; px++) {
+							if (px >= 1 && px < (TFT_WIDTH - 1)) {
+								uint16_t off = (uint16_t)((px - 1) * 2);
+								linebuf[off] = (uint8_t)(RED >> 8);
+								linebuf[off + 1] = (uint8_t)RED;
+							}
+						}
 					}
 				}
 			}
@@ -321,9 +311,8 @@ TEST_LOW
 			}
 		}
 
-		tft_draw_line(line1_x, 1, line1_x, FFT_FRAME_HEIGHT - 1, DARKBLUE); // 1.0kHz line
-		tft_draw_line(line2_x, 1, line2_x, FFT_FRAME_HEIGHT - 1, DARKBLUE); // 2.0kHz line
-		// disp freqeuncy
+		tft_draw_line(line1_x, 1, line1_x, FFT_FRAME_HEIGHT - 1, DARKBLUE);
+		tft_draw_line(line2_x, 1, line2_x, FFT_FRAME_HEIGHT - 1, DARKBLUE);
 		peakFrequency = (FD_SAMPLING_FREQUENCY / SAMPLES) * maxIndex;
 		{
 			uint32_t now = millis();
@@ -335,7 +324,6 @@ TEST_LOW
 				lastSignalMs = now;
 				displayFrequency = peakFrequency;
 			} else if (lastSignalMs != 0 && (now - lastSignalMs) < 1000U) {
-				// Hold last stable reading for 1s to avoid flicker on short dropouts.
 				showSignal = 1;
 			}
 
@@ -375,7 +363,6 @@ TEST_LOW
 			}
 		}
 #endif
-//TEST_LOW
 	}
 	return 0;
 }
