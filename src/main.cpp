@@ -49,6 +49,11 @@
 //  - ST7735/7789のドライバを新規作成し最適化
 //  - 速度検出の安定化
 //  - ノイズによる誤動作の軽減
+// 日付: 2026.04.07 バージョン 1.6
+//  - CH32V006 対応
+//  - LCD/GPIO 配線差分に対応
+//  - FLASH wait state 設定の修正
+//  - ADC入力 PA2 を ADC_IN0 として修正
 //
 // このソフトウェアは GNU General Public License (GPL) に基づき配布されています。
 // 改変版も同じ GPL ライセンスで再配布してください。
@@ -56,17 +61,18 @@
 //
 //  Hardware Connections
 //
-//	UIAP	CH32V003  	SSD1306(SPI)	SW		MIC    	 ETC.
-//	10	    PD0            DC
+//	UIAP	CH32V003/006  	TFT(SPI)	SW		MIC    	 ETC.
+//	10	    PD0 / PC0       DC
 //	 8      PC6            MOSI
 //   9      PC7            RES
 //   7      PC5            SCK
-//   5      PC3            CS
+//   5      PC3 / PA4      CS
 //	A1	    PA1                         SW1
 //	A2      PC4                         SW2
 //  A3      PD2							SW3
-//	A0		PA2									OUT
+//	A0		PA2									OUT(ADC_IN0)
 //  A6		PD6											TEST
+//  LED     PC0 / PC3
 //	3.3V                  3.3V           		VCC(Via 78L33 3.3V)
 //  GND                    GND          		GND
 //
@@ -92,8 +98,8 @@ int main()
 	int8_t *vReal;
 	int8_t *vImag;
 
-	SystemInit();				// ch32v003 Setup
-	GPIO_setup();				// gpio Setup;
+	SystemInit();				// MCU setup
+	GPIO_setup();				// GPIO/ADC setup
     tft_init();					// LCD init
 
 	vReal = (int8_t *)&shared_buf[0];
@@ -108,5 +114,4 @@ int main()
 	}
 	return 0;
 }
-
 
