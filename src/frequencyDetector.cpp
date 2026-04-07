@@ -295,7 +295,7 @@ TEST_LOW
 				uint8_t ph = peak_h[i];
 				if (ph > 0) {
 					uint16_t peak_y = (uint16_t)(FFT_AREA_Y_BOTTOM - ph);
-					if (y == peak_y) {
+					if (y == peak_y || (peak_y > FFT_AREA_Y_TOP && y + 1 == peak_y)) {
 						for (uint16_t px = x0; px <= x1; px++) {
 							if (px >= 1 && px < (TFT_WIDTH - 1)) {
 								uint16_t off = (uint16_t)((px - 1) * 2);
