@@ -175,15 +175,15 @@ TEST_HIGH
 		float fave = 0.0f;
 		for (int i = 0; i < SAMPLES; i++) {
 			uint32_t t = micros();
-			uint8_t val = (uint8_t)((adc_read_raw() >> 2) & 0xFF);
-			fave += (float)val;
-			vReal[i] = (float)val;
+			uint16_t raw = adc_read_raw();
+			fave += (float)raw;
+			vReal[i] = (float)raw;
 			while ((micros() - t) < sampling_period_us);
 		}
 TEST_LOW
 		fave /= (float)SAMPLES;
 		for (int i = 0; i < SAMPLES; i++) {
-			vReal[i] -= fave;
+			vReal[i] = vReal[i] - fave;
 			vImag[i] = 0.0f;
 		}
 		float_fft(vReal, vImag, 7);
@@ -226,6 +226,9 @@ TEST_LOW
 			uint16_t m = mag[i];
 			uint32_t gain_num = FFT_Y_GAIN_NUM;
 			uint32_t gain_den = FFT_Y_GAIN_DEN * 16U;
+#if !defined(BOARD_CH32V006)
+			gain_den = FFT_Y_GAIN_DEN * 2U;
+#endif
 			uint32_t target_q8 = ((uint32_t)m * (uint32_t)SCALE * gain_num * 256U + (gain_den / 2U)) / gain_den;
 			if (target_q8 >= bar_h_q8[i]) {
 				bar_h_q8[i] = (uint16_t)(bar_h_q8[i] + (((target_q8 - bar_h_q8[i]) * 7U + 7U) / 8U));

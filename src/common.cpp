@@ -86,7 +86,7 @@ static void adc_init_ch0(void)
 	RCC->APB2PRSTR |= RCC_APB2Periph_ADC1;
 	RCC->APB2PRSTR &= ~RCC_APB2Periph_ADC1;
 
-	// Sample time: medium (15 cycles) for all channels.
+	// Use a moderate sample time on all channels to match the stable V003 behavior.
 	ADC1->SAMPTR2 = (ADC_SMP0_1 << (3 * 0)) | (ADC_SMP0_1 << (3 * 1)) |
 		(ADC_SMP0_1 << (3 * 2)) | (ADC_SMP0_1 << (3 * 3)) |
 		(ADC_SMP0_1 << (3 * 4)) | (ADC_SMP0_1 << (3 * 5)) |
@@ -96,12 +96,12 @@ static void adc_init_ch0(void)
 		(ADC_SMP0_1 << (3 * 2)) | (ADC_SMP0_1 << (3 * 3)) |
 		(ADC_SMP0_1 << (3 * 4)) | (ADC_SMP0_1 << (3 * 5));
 
-//#if defined(BOARD_CH32V006)
-//	ADC1->CTLR2 |= ADC_EXTSEL;
-//	ADC1->CTLR2 |= ADC_ADON;
-//#else
+#if defined(BOARD_CH32V006)
+	ADC1->CTLR2 |= ADC_EXTSEL;
+	ADC1->CTLR2 |= ADC_ADON;
+#else
 	ADC1->CTLR2 |= ADC_ADON | ADC_EXTSEL;
-//#endif
+#endif
 	ADC1->CTLR2 |= CTLR2_RSTCAL_Set;
 	while (ADC1->CTLR2 & CTLR2_RSTCAL_Set) {
 	}
