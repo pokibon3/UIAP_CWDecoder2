@@ -38,6 +38,7 @@ static const uint8_t SW2_PIN = 4; // PC4
 static const uint8_t SW3_PIN = 2; // PD2
 static const uint8_t ADC_PIN = 2; // PA2 (ADC_IN0)
 #if defined(BOARD_CH32V006)
+static const uint8_t LED_PIN = 3; // PC3
 static const uint8_t ADC_CH_A2 = 0; // PA2 = ADC_IN0 on CH32V006
 #else
 static const uint8_t LED_PIN = 0; // PC0
@@ -95,12 +96,12 @@ static void adc_init_ch0(void)
 		(ADC_SMP0_1 << (3 * 2)) | (ADC_SMP0_1 << (3 * 3)) |
 		(ADC_SMP0_1 << (3 * 4)) | (ADC_SMP0_1 << (3 * 5));
 
-#if defined(BOARD_CH32V006)
-	ADC1->CTLR2 |= ADC_EXTSEL;
-	ADC1->CTLR2 |= ADC_ADON;
-#else
+//#if defined(BOARD_CH32V006)
+//	ADC1->CTLR2 |= ADC_EXTSEL;
+//	ADC1->CTLR2 |= ADC_ADON;
+//#else
 	ADC1->CTLR2 |= ADC_ADON | ADC_EXTSEL;
-#endif
+//#endif
 	ADC1->CTLR2 |= CTLR2_RSTCAL_Set;
 	while (ADC1->CTLR2 & CTLR2_RSTCAL_Set) {
 	}
@@ -112,7 +113,6 @@ static void adc_init_ch0(void)
 static inline uint16_t adc_read_ch0_raw()
 {
 	ADC1->RSQR3 = ADC_CH_A2;
-	Delay_Us(GPIO_ADC_MUX_DELAY);
 #if defined(BOARD_CH32V006)
 	ADC1->CTLR2 |= ADC_ADON;
 #endif
@@ -172,11 +172,8 @@ int GPIO_setup()
 	gpio_cfg_pin(GPIOD, TEST_PIN, GPIO_CFG_OUTPUT_PP_10M);
 	gpio_write(GPIOD, TEST_PIN, GPIO_LOW);
 
-#if !defined(BOARD_CH32V006)
-	// Keep CH32V003 behavior exactly as before.
 	gpio_cfg_pin(GPIOC, LED_PIN, GPIO_CFG_OUTPUT_PP_10M);
 	gpio_write(GPIOC, LED_PIN, GPIO_LOW);
-#endif
 
 	// UART TX pin: alternate function push-pull.
 	gpio_cfg_pin(GPIOD, UART_PIN, GPIO_CFG_OUTPUT_AF_PP_10M);
@@ -227,11 +224,7 @@ uint16_t adc_capture_u8(int8_t *dst, uint16_t samples, uint16_t sample_period_us
 
 void gpio_write_led(uint8_t level)
 {
-#if !defined(BOARD_CH32V006)
 	gpio_write(GPIOC, LED_PIN, level);
-#else
-	(void)level;
-#endif
 }
 
 void gpio_write_test(uint8_t level)
