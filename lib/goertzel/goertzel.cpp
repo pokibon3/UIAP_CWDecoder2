@@ -1,3 +1,5 @@
+#if !defined(BOARD_CH32V006)
+
 #include <stdio.h>
 #include <math.h>
 
@@ -81,3 +83,5 @@ int32_t goertzel(int16_t *data, int16_t n)
 
     return isqrt32(mag2);
 }
+
+#endif

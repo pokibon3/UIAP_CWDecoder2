@@ -54,6 +54,7 @@
 //  - LCD/GPIO 配線差分に対応
 //  - FLASH wait state 設定の修正
 //  - ADC入力 PA2 を ADC_IN0 として修正
+//  - CH32V006 の LED 制御を PC3 に修正
 //
 // このソフトウェアは GNU General Public License (GPL) に基づき配布されています。
 // 改変版も同じ GPL ライセンスで再配布してください。
@@ -71,7 +72,7 @@
 //	A2      PC4                         SW2
 //  A3      PD2							SW3
 //	A0		PA2									OUT(ADC_IN0)
-//  A6		PD6											TEST
+//  A6		PD6                                 TEST
 //  LED     PC0 / PC3
 //	3.3V                  3.3V           		VCC(Via 78L33 3.3V)
 //  GND                    GND          		GND
