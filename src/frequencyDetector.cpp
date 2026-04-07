@@ -198,7 +198,11 @@ TEST_LOW
 		uint16_t ave = adc_capture_u8(vImag, SAMPLES, sampling_period_us);
 TEST_LOW
 		for (int i = 0; i < SAMPLES; i++) {
-			vReal[i] = (int8_t)(vImag[i] - ave);
+			uint8_t sample_u8 = (uint8_t)vImag[i];
+			int16_t centered = ((int16_t)sample_u8 - (int16_t)ave) << 1;
+			if (centered > 127) centered = 127;
+			if (centered < -128) centered = -128;
+			vReal[i] = (int8_t)centered;
 			vImag[i] = 0;
 		}
   		fix_fft((char *)vReal, (char *)vImag, 7, 0);
