@@ -1,4 +1,4 @@
-# CW Decoder for UIAPduino
+# CW Decoder for UIAPduino２
 
 UIAPduino Pro Micro で動作する CW Decoder / FFT Analyzer です。  
 VS Code + PlatformIO + `ch32v003fun` ベースでビルドできます。
@@ -12,8 +12,8 @@ MODE SW を押すことでモード切り替えができます。
 
 ## 対応 MCU
 
-- CH32V003
-- CH32V006
+- CH32V003(UIAPduino Pro Micro CH32V003 V1.4)
+- CH32V006(UIAPduino Pro Micro CH32V006 V1.1)
 
 `v1.6` 時点で、CH32V006 向けに以下を反映しています。
 
