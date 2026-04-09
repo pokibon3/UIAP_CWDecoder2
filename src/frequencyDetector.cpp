@@ -20,6 +20,20 @@
 #define FD_SAMPLING_FREQUENCY 6000	// Hz	+10%
 #define FFT_FPS_MEASURE 0
 #define FFT_PEAK_HOLD_FRAMES 20
+#if defined(BOARD_CH32V006)
+#define FFT_SIGNAL_DETECT_THRESHOLD 7
+#else
+#define FFT_SIGNAL_DETECT_THRESHOLD 4
+#endif
+#if defined(BOARD_CH32V006) && defined(TFT_ST7789)
+#define FFT_VALUE_FONT_SCALE FONT_SCALE_24X24
+#define FFT_VALUE_CHAR_ADV   (TFT_FONT_ADV * FONT_SCALE_24X24)
+#define FFT_VALUE_AREA_HEIGHT 26
+#else
+#define FFT_VALUE_FONT_SCALE FONT_SCALE_16X16
+#define FFT_VALUE_CHAR_ADV   (TFT_FONT_ADV * FONT_SCALE_16X16)
+#define FFT_VALUE_AREA_HEIGHT 18
+#endif
 
 #if !defined(BOARD_CH32V006)
 static uint32_t isqrt32(uint32_t x)
@@ -135,6 +149,7 @@ int freqDetector(int8_t *vReal, int8_t *vImag)
 	uint16_t line1_x = plot_left + (bin1 * bin_step) + bar_center_offset;
 	uint16_t line2_x = plot_left + (bin2 * bin_step) + bar_center_offset;
 	uint16_t value_area_x = plot_left + (plot_width / 2);
+	uint16_t value_area_right = (plot_left + plot_width > 2) ? (uint16_t)(plot_left + plot_width - 2) : value_area_x;
 	uint16_t value_text_base = value_area_x + 2;
 
 	tft_set_color(BLUE);
@@ -323,7 +338,7 @@ TEST_LOW
 		peakFrequency = (FD_SAMPLING_FREQUENCY / SAMPLES) * maxIndex;
 		{
 			uint32_t now = millis();
-			uint8_t hasSignal = (maxValue >= 4) ? 1 : 0;
+			uint8_t hasSignal = (maxValue >= FFT_SIGNAL_DETECT_THRESHOLD) ? 1 : 0;
 			uint8_t showSignal = hasSignal;
 			uint16_t displayFrequency = oldFreequency;
 
@@ -340,10 +355,24 @@ TEST_LOW
 				} else {
 					strcpy(buf, "    Hz");
 				}
-				tft_set_cursor((6 - strlen(buf)) * 12 + value_text_base, 3);
+				uint16_t value_cursor_x = (uint16_t)((6 - strlen(buf)) * FFT_VALUE_CHAR_ADV + value_text_base);
+#if defined(BOARD_CH32V006)
+				{
+					uint16_t text_w = (uint16_t)(strlen(buf) * FFT_VALUE_CHAR_ADV);
+					if (value_area_right > text_w) {
+						uint16_t right_aligned_x = (uint16_t)(value_area_right - text_w);
+						if (right_aligned_x > value_text_base) {
+							value_cursor_x = right_aligned_x;
+						} else {
+							value_cursor_x = value_text_base;
+						}
+					}
+				}
+#endif
+				tft_set_cursor(value_cursor_x, 3);
 				tft_set_color(YELLOW);
-				tft_fill_rect(value_area_x, 1, (plot_left + plot_width) - value_area_x - 2, 18, BLACK);
-				tft_print(buf, FONT_SCALE_16X16);
+				tft_fill_rect(value_area_x, 1, value_area_right - value_area_x, FFT_VALUE_AREA_HEIGHT, BLACK);
+				tft_print(buf, FFT_VALUE_FONT_SCALE);
 				oldFreequency = displayFrequency;
 				oldHasSignal = showSignal;
 			}
