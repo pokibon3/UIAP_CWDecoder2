@@ -15,12 +15,15 @@ MODE SW を押すことでモード切り替えができます。
 - CH32V003(UIAPduino Pro Micro CH32V003 V1.4)
 - CH32V006(UIAPduino Pro Micro CH32V006 V1.1)
 
-`v1.6a` 時点で、CH32V006 向けに以下を反映しています。
+`v1.7` 時点で、CH32V006 向けに以下を反映しています。
 
 - LCD / GPIO 配線差分対応
 - FLASH wait state 設定修正
 - ADC 入力 `PA2 = ADC_IN0` 修正
 - LED 制御を `PC3` に修正
+- `ST7735` 向け `12x16` ANK フォント追加
+- `ST7789` 向け `15x21` ANK フォント追加
+- 006 では拡大描画ではなくネイティブ字形を使用
 
 ## 機能
 
@@ -56,35 +59,24 @@ MODE SW を押すことでモード切り替えができます。
 
 ## ビルド
 
-PlatformIO の環境を使ってビルドします。
+VS Code でこのフォルダを開き、PlatformIO IDE の機能を使ってビルドします。
 
-例:
+1. VS Code でこのプロジェクトを開く
+2. PlatformIO IDE が有効になっていることを確認する
+3. 画面下部の PlatformIO ツールバーから `Build` を実行する
 
-```bash
-pio run -e genericCH32V006F8U6
-```
-
-または:
-
-```bash
-pio run -e genericCH32V003F4P6
-```
+既定の environment は現在 `genericCH32V006F8U6` です。
 
 ## ファームウェア更新ツール
 
-更新用パッケージは `tools` 配下に整理しています。
+更新用パッケージは MCU と LCD 種別ごとに `tools` 配下へ整理しています。
 
-- Windows: [tools/win](/Users/ooe/src/cw_decoder3_for_uiap/tools/win)
-- macOS: [tools/mac](/Users/ooe/src/cw_decoder3_for_uiap/tools/mac)
+- CH32V003 / ST7735: [tools/003/ST7735](/Users/ooe/src/cw_decoder3_for_uiap/tools/003/ST7735)
+- CH32V003 / ST7789: [tools/003/ST7789](/Users/ooe/src/cw_decoder3_for_uiap/tools/003/ST7789)
+- CH32V006 / ST7735: [tools/006/ST7735](/Users/ooe/src/cw_decoder3_for_uiap/tools/006/ST7735)
+- CH32V006 / ST7789: [tools/006/ST7789](/Users/ooe/src/cw_decoder3_for_uiap/tools/006/ST7789)
 
-現行版:
-
-- Windows: [tools/win/firmwareUpdate1.6](/Users/ooe/src/cw_decoder3_for_uiap/tools/win/firmwareUpdate1.6)
-- macOS: [tools/mac/firmwareUpdate1.6](/Users/ooe/src/cw_decoder3_for_uiap/tools/mac/firmwareUpdate1.6)
-
-旧版:
-
-- macOS 1.5: [tools/mac/firmwareUpdate1.5](/Users/ooe/src/cw_decoder3_for_uiap/tools/mac/firmwareUpdate1.5)
+今回の `v1.7` は CH32V006 のフォント改善版です。
 
 ## 変更履歴
 
@@ -115,7 +107,12 @@ pio run -e genericCH32V003F4P6
   - GPIO / LCD 配線差分対応
   - FLASH wait state 設定修正
   - ADC 入力 `PA2 = ADC_IN0` 修正
-  - ファームウェア更新ツールを `tools/win`, `tools/mac` に整理
+  - ファームウェア更新ツールを `tools` 配下へ整理
+- V1.7
+  - CH32V006 の表示フォントを改善
+  - ST7735 向け `12x16` ANK フォントを追加
+  - ST7789 向け `15x21` ANK フォントを追加
+  - 006 では拡大描画ではなくネイティブ字形を使用
 
 ## 参考
 
