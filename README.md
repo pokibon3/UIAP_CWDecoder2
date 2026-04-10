@@ -15,7 +15,7 @@ MODE SW を押すことでモード切り替えができます。
 - CH32V003(UIAPduino Pro Micro CH32V003 V1.4)
 - CH32V006(UIAPduino Pro Micro CH32V006 V1.1)
 
-`v1.6` 時点で、CH32V006 向けに以下を反映しています。
+`v1.6a` 時点で、CH32V006 向けに以下を反映しています。
 
 - LCD / GPIO 配線差分対応
 - FLASH wait state 設定修正
@@ -110,7 +110,7 @@ pio run -e genericCH32V003F4P6
   - ST7735 / ST7789 ドライバを新規作成し最適化
   - 速度検出の安定化
   - ノイズによる誤動作の軽減
-- V1.6
+- V1.6a
   - CH32V006 対応
   - GPIO / LCD 配線差分対応
   - FLASH wait state 設定修正

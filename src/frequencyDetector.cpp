@@ -175,6 +175,7 @@ int freqDetector(int8_t *vReal, int8_t *vImag)
 
 	while (1) {
 		uint16_t mag[SAMPLES / 2];
+		uint32_t display_mag_q8[SAMPLES / 2];
 #if FFT_FPS_MEASURE
 		static uint32_t fps_last_ms = 0;
 		static uint16_t fps_frames = 0;
@@ -207,6 +208,7 @@ TEST_LOW
 			for (int i = 0; i < SAMPLES / 2; i++) {
 				float m = sqrtf(vReal[i] * vReal[i] + vImag[i] * vImag[i]) * norm;
 				mag[i] = (m > 65535.0f) ? 65535U : (uint16_t)m;
+				display_mag_q8[i] = (uint32_t)mag[i] << 8;
 			}
 		}
 #else
@@ -214,7 +216,7 @@ TEST_LOW
 TEST_LOW
 		for (int i = 0; i < SAMPLES; i++) {
 			uint8_t sample_u8 = (uint8_t)vImag[i];
-			int16_t centered = ((int16_t)sample_u8 - (int16_t)ave) << 1;
+			int16_t centered = (int16_t)sample_u8 - (int16_t)ave;
 			if (centered > 127) centered = 127;
 			if (centered < -128) centered = -128;
 			vReal[i] = (int8_t)centered;
@@ -224,8 +226,15 @@ TEST_LOW
 		for (int i = 0; i < SAMPLES / 2; i++) {
 			int16_t vr = vReal[i];
 			int16_t vi = vImag[i];
-			uint32_t mag2 = (uint32_t)(vr * vr) + (uint32_t)(vi * vi);
-			mag[i] = (uint16_t)isqrt32(mag2);
+			uint16_t m = (uint16_t)(abs(vr) + abs(vi));
+			mag[i] = m;
+			display_mag_q8[i] = (uint32_t)m << 8;
+		}
+		for (int i = 1; i < (SAMPLES / 2) - 1; i++) {
+			// Light bin interpolation for CH32V003: keep peak detection on raw mag[],
+			// but smooth the displayed bar height to reduce coarse visible steps.
+			display_mag_q8[i] =
+				(((uint32_t)mag[i] * 3U) + (uint32_t)mag[i - 1] + (uint32_t)mag[i + 1]) << 6;
 		}
 #endif
 
@@ -246,9 +255,12 @@ TEST_LOW
 			uint32_t gain_num = FFT_Y_GAIN_NUM;
 			uint32_t gain_den = FFT_Y_GAIN_DEN * 16U;
 #if !defined(BOARD_CH32V006)
-			gain_den = FFT_Y_GAIN_DEN * 2U;
+			gain_num *= 4U;
+			// CH32V003 magnitudes are small, so reduce the bar conversion gain to
+			// get more visible intermediate height steps without changing maxValue.
+			gain_den = FFT_Y_GAIN_DEN * 8U;
 #endif
-			uint32_t target_q8 = ((uint32_t)m * (uint32_t)SCALE * gain_num * 256U + (gain_den / 2U)) / gain_den;
+			uint32_t target_q8 = (display_mag_q8[i] * (uint32_t)SCALE * gain_num + (gain_den / 2U)) / gain_den;
 			if (target_q8 >= bar_h_q8[i]) {
 				bar_h_q8[i] = (uint16_t)(bar_h_q8[i] + (((target_q8 - bar_h_q8[i]) * 7U + 7U) / 8U));
 			} else {
@@ -376,6 +388,7 @@ TEST_LOW
 				oldFreequency = displayFrequency;
 				oldHasSignal = showSignal;
 			}
+
 		}
 #if FFT_FPS_MEASURE
 		fps_frames++;
