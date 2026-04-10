@@ -107,7 +107,7 @@ VS Code でこのフォルダを開き、PlatformIO IDE の機能を使ってビ
   - ST7735 / ST7789 ドライバを新規作成し最適化
   - 速度検出の安定化
   - ノイズによる誤動作の軽減
-- V1.6a
+- V1.6
   - CH32V006 対応
   - GPIO / LCD 配線差分対応
   - FLASH wait state 設定修正
