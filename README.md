@@ -78,6 +78,8 @@ VS Code でこのフォルダを開き、PlatformIO IDE の機能を使ってビ
 
 今回の `v1.7` は CH32V006 のフォント改善版です。
 
+- CH32V006 / ST7735 `v1.7` macOS: [tools/006/ST7735/mac/firmwareUpdate1.7](/Users/ooe/src/cw_decoder3_for_uiap/tools/006/ST7735/mac/firmwareUpdate1.7)
+- CH32V006 / ST7735 `v1.7` Windows: [tools/006/ST7735/win/firmwareUpdate1.7](/Users/ooe/src/cw_decoder3_for_uiap/tools/006/ST7735/win/firmwareUpdate1.7)
 - CH32V006 / ST7789 `v1.7` macOS: [tools/006/ST7789/mac/firmwareUpdate1.7](/Users/ooe/src/cw_decoder3_for_uiap/tools/006/ST7789/mac/firmwareUpdate1.7)
 - CH32V006 / ST7789 `v1.7` Windows: [tools/006/ST7789/win/firmwareUpdate1.7](/Users/ooe/src/cw_decoder3_for_uiap/tools/006/ST7789/win/firmwareUpdate1.7)
 
