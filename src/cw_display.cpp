@@ -22,7 +22,7 @@ static const int colums = 13;
 
 static const char title1[] = " CW Decoder  ";
 static const char title2[] = "  for UIAP   ";
-static const char title3[] = " Version 1.6";
+static const char title3[] = "Version v1.7 ";
 static uint8_t first_flg = 1;
 
 static const uint16_t tone_hz[] = { 700, 800, 1000 };

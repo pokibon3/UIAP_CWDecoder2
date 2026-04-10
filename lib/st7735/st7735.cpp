@@ -1,6 +1,9 @@
 #include "st7735.h"
 #include "ch32fun.h"
 #include "fontk_8x8.h"
+#if defined(BOARD_CH32V006)
+#include "font_12x16_ank.h"
+#endif
 #include <stdbool.h>
 
 extern "C" int mini_snprintf(char* buffer, unsigned int buffer_len, const char *fmt, ...);
@@ -258,6 +261,37 @@ void st7735_print_char(char c, uint8_t scale)
 {
     if (scale < 1) scale = 1;
     if (scale > 2) scale = 2;
+
+#if defined(BOARD_CH32V006)
+    if (scale == 2)
+    {
+        // Use native 12x16 Scale2x font — no pixel replication
+        const uint8_t* glyph = font12x16_ank[(uint8_t)c];
+        const uint16_t x0 = apply_x(cursor_x);
+        const uint16_t y0 = apply_y(cursor_y);
+
+        START_WRITE();
+        tft_set_window(x0, y0,
+                       (uint16_t)(x0 + FONT12X16_ANK_WIDTH - 1),
+                       (uint16_t)(y0 + FONT12X16_ANK_HEIGHT - 1));
+
+        for (uint8_t row = 0; row < FONT12X16_ANK_HEIGHT; row++)
+        {
+            const uint8_t b0 = glyph[row * FONT12X16_ANK_ROW_BYTES];
+            const uint8_t b1 = glyph[row * FONT12X16_ANK_ROW_BYTES + 1];
+            for (uint8_t col = 0; col < FONT12X16_ANK_WIDTH; col++)
+            {
+                const uint8_t bit = (col < 8)
+                    ? ((b0 >> (7 - col)) & 1)
+                    : ((b1 >> (7 - (col - 8))) & 1);
+                tft_write_data16(bit ? fg_color : bg_color);
+            }
+        }
+
+        END_WRITE();
+        return;
+    }
+#endif
 
     const uint8_t* glyph = &font[((uint8_t)c) << 3];
     const uint16_t w = (uint16_t)(FONT_WIDTH * scale);
