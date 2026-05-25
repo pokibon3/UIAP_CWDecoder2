@@ -208,6 +208,8 @@ int cwd_setup()
 //==================================================================
 //	cwDecoder : デコーダ本体
 //==================================================================
+static int decodeAscii(int16_t asciinumber);
+
 static void decode_and_display(void)
 {
 	if (strlen(code) == 0) return;
