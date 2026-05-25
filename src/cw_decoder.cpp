@@ -208,6 +208,18 @@ int cwd_setup()
 //==================================================================
 //	cwDecoder : デコーダ本体
 //==================================================================
+static void decode_and_display(void)
+{
+	if (strlen(code) == 0) return;
+	int16_t result = decode(code, &sw);
+	if (result == 0) {
+		cw_display_enqueue_char('*');
+	} else {
+		decodeAscii(result);
+	}
+	code[0] = '\0';
+}
+
 static int decodeAscii(int16_t asciinumber)
 {
 	if (asciinumber == 0) return 0;
@@ -348,10 +360,12 @@ int cwDecoder(void)
 			stop = GPIO_LOW;
 			if (filteredstate == GPIO_LOW){  //// HIGH 終了
 				if (highduration < (hightimesavg*2) && ((uint32_t)highduration * 5U) > ((uint32_t)hightimesavg * 3U)){ /// 0.6 未満はノイズ除外
+					if (strlen(code) >= 8) { decode_and_display(); }
 					strcat(code,".");
 //					printf(".");
 				}
 				if (highduration > (hightimesavg*2) && highduration < (hightimesavg*6)){
+					if (strlen(code) >= 8) { decode_and_display(); }
 					strcat(code,"-");
 //					printf("-");
 				wpm = (wpm + (1200/((highduration)/3)))/2;  //// 可能な限り精度の高い推定
@@ -367,15 +381,9 @@ int cwDecoder(void)
 				gap_type_t g = classify_gap(lowduration, hightimesavg);
 
 				if (g == GAP_CHAR) {          // 文字間
-					if (strlen(code) > 0) {
-						decodeAscii(decode(code, &sw));
-						code[0] = '\0';
-					}
+					decode_and_display();
 				} else if (g == GAP_WORD) {   // 単語間
-					if (strlen(code) > 0) {
-						decodeAscii(decode(code, &sw));
-						code[0] = '\0';
-					}
+					decode_and_display();
 					decodeAscii(32);           // スペース出力
 				}
 			}
@@ -386,8 +394,7 @@ int cwDecoder(void)
 		//////////////////////////////
 		uint32_t unit = (hightimesavg > 0) ? hightimesavg : highduration;
 		if ((millis() - startttimelow) > unit * 6 && stop == GPIO_LOW) {
-			decodeAscii(decode(code, &sw));
-			code[0] = '\0';
+			decode_and_display();
 			stop = GPIO_HIGH;
 		}
 
