@@ -1,87 +1,142 @@
+//
+//	3-bin integer Goertzel filter (CH32V003: no FPU / no hardware multiply)
+//
+//	Center bin tracks the target tone; two side bins sit exactly
+//	+-2 DFT bins away (+-341.33 Hz @ 8192 Hz / 48 samples), on nulls of
+//	the rectangular-window Dirichlet kernel. A clean tone therefore
+//	leaks almost nothing into the side bins, while white noise raises
+//	all three bins roughly equally - the center/side ratio separates
+//	tone from noise.
+//
+//	Coefficients are Q14 fixed point (shift instead of divide), which
+//	is both faster and more precise than the old coeff100 scheme.
+//
+//	Two side levels are reported:
+//	- goertzelSideMag()     = min(EMA(low), EMA(high)). min() keeps a
+//	  one-sided interferer (QRM) from masking the tone; the per-side
+//	  EMA (alpha = 1/4, ~4 blocks = 23 ms) removes the block-to-block
+//	  variance of white noise.
+//	- goertzelSideMagInst() = min(low, high) of the current block only,
+//	  used by the decoder when turning ON from silence to reject
+//	  broadband impulses that the EMA has not caught up with yet.
+//
 #if !defined(BOARD_CH32V006)
 
-#include <stdio.h>
-#include <math.h>
+#include <stdint.h>
 
-#define N 100                 //  BW = sampling_freq / N
-//static float sampling_freq  = 8928.0;
-//static float sampling_freq  = 8000.0;
-//static float target_freq=     558.0;
-//static float target_freq=     666.7;
-//static float target_freq=     888.8;
-//short int Data[N];
+// coeff_q14 = round(2 * cos(2 * pi * f / 8192) * 16384)
+static const int32_t coeff_tbl[3][3] = {
+	// center   low(-341.3Hz) high(+341.3Hz)
+	{ 28576, 31753, 23453 },  // 666.7 Hz (sides 325.4 / 1008.0)
+	{ 26300, 30463, 20345 },  // 833.3 Hz (sides 492.0 / 1174.6)
+	{ 23593, 28675, 16904 },  // 1000 Hz (sides 658.7 / 1341.3)
+};
 
-//static float omega, coeff, cosine;
-static int16_t coeff100;
-static int32_t  Q0, Q1, Q2, mag2;
-//static int rc ,i, k;
+static int32_t coeff_c = 28576;
+static int32_t coeff_l = 31753;
+static int32_t coeff_h = 23453;
+
+static int32_t side_mag = 0;
+static int32_t side_mag_inst = 0;
+static int32_t side_ema_l = 0;
+static int32_t side_ema_h = 0;
+static uint8_t side_ema_started = 0;
 
 void setSpeed(int16_t speed)
 {
-    switch(speed) {
-        case 0 :
-            coeff100 = 173;         // 666.7Hz
-            break;
-        case 1 :
-            coeff100 = 158;         // 833.3Hz
-            break;
-        case 2 :
-            coeff100 = 141;         // 1000.0Hz
-            break;
-        default :
-            coeff100 = 173;
+    if (speed < 0 || speed > 2) {
+        speed = 0;
     }
+    coeff_c = coeff_tbl[speed][0];
+    coeff_l = coeff_tbl[speed][1];
+    coeff_h = coeff_tbl[speed][2];
 }
 
-// floor(sqrt(x)) を返す
+void initGoertzel(int16_t speed)
+{
+    setSpeed(speed);
+    side_mag = 0;
+    side_mag_inst = 0;
+    side_ema_l = 0;
+    side_ema_h = 0;
+    side_ema_started = 0;
+}
+
+// floor(sqrt(x))
 static uint32_t isqrt32(uint32_t x)
 {
-    uint32_t op  = x;
+    uint32_t op = x;
     uint32_t res = 0;
-    uint32_t one = 1u << 30;   // 2^30（32bit の「2番目に高いビット」）
+    uint32_t one = 1u << 30;
 
-    // one を、x 以下の最大の 4 の冪に調整
     while (one > op) {
         one >>= 2;
     }
-
     while (one != 0) {
         if (op >= res + one) {
-            op  -= res + one;
+            op -= res + one;
             res += one << 1;
         }
         res >>= 1;
         one >>= 2;
     }
-
-    return res;   // これが floor(sqrt(x))
+    return res;
 }
-void initGoertzel(int16_t speed)
-{   
-//    int16_t k = (int) (0.5 + ((N * target_freq) / sampling_freq));
-//    omega = (2.0 * M_PI * k) / N;
-//    cosine = cos(omega);
-//    coeff = 2.0 * cosine;
-//    printf("coeff = %d\n", (int16_t)coeff * 100);
-//    while(1);
-//    coeff100 = 185;             // coeff = coeff100/100   target_freq = 666.7
-//    coeff100 = 154;             // coeff = coeff100/100    target_frea = 888.8
-//    coeff100 = 100;             // coeff = coeff100/100    target_frea = 1000.0
-        setSpeed(speed);
+
+static int32_t goertzel_mag(int32_t q1, int32_t q2, int32_t coeff)
+{
+    // scale down before squaring to stay inside int32
+    q1 >>= 2;
+    q2 >>= 2;
+    int32_t m2 = q1 * q1 + q2 * q2 - (int32_t)(((int64_t)q1 * q2 * coeff) >> 14);
+    if (m2 < 0) {
+        m2 = 0;
+    }
+    return (int32_t)isqrt32((uint32_t)m2) << 2;
 }
 
 int32_t goertzel(int16_t *data, int16_t n)
 {
-    Q1 = 0; 
-    Q2 = 0;
-    for (int16_t i = 0; i < n; i++) {
-        Q0 = coeff100 * Q1 / 100 - Q2 + data[i];
-        Q2 = Q1; 
-        Q1 = Q0;
-    }
-    mag2 = (Q1 * Q1) + (Q2 * Q2) - Q1 * Q2 * coeff100 / 100;
+    int32_t q1c = 0, q2c = 0;
+    int32_t q1l = 0, q2l = 0;
+    int32_t q1h = 0, q2h = 0;
 
-    return isqrt32(mag2);
+    for (int16_t i = 0; i < n; i++) {
+        const int32_t x = data[i];
+        int32_t q0;
+        q0 = ((coeff_c * q1c) >> 14) - q2c + x; q2c = q1c; q1c = q0;
+        q0 = ((coeff_l * q1l) >> 14) - q2l + x; q2l = q1l; q1l = q0;
+        q0 = ((coeff_h * q1h) >> 14) - q2h + x; q2h = q1h; q1h = q0;
+    }
+
+    const int32_t mag_l = goertzel_mag(q1l, q2l, coeff_l);
+    const int32_t mag_h = goertzel_mag(q1h, q2h, coeff_h);
+
+    side_mag_inst = (mag_l < mag_h) ? mag_l : mag_h;
+
+    if (!side_ema_started) {
+        side_ema_started = 1;
+        side_ema_l = mag_l;
+        side_ema_h = mag_h;
+    } else {
+        side_ema_l += (mag_l - side_ema_l) / 4;
+        side_ema_h += (mag_h - side_ema_h) / 4;
+    }
+    side_mag = (side_ema_l < side_ema_h) ? side_ema_l : side_ema_h;
+
+    return goertzel_mag(q1c, q2c, coeff_c);
+}
+
+// Smoothed min side-bin magnitude as of the last goertzel() call.
+int32_t goertzelSideMag(void)
+{
+    return side_mag;
+}
+
+// Instantaneous (unsmoothed) min side-bin magnitude of the last block.
+int32_t goertzelSideMagInst(void)
+{
+    return side_mag_inst;
 }
 
 #endif
