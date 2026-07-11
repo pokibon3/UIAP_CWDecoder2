@@ -71,17 +71,21 @@ VS Code でこのフォルダを開き、PlatformIO IDE の機能を使ってビ
 
 更新用パッケージは MCU と LCD 種別ごとに `tools` 配下へ整理しています。
 
-- CH32V003 / ST7735: [tools/003/ST7735](/Users/ooe/src/cw_decoder3_for_uiap/tools/003/ST7735)
-- CH32V003 / ST7789: [tools/003/ST7789](/Users/ooe/src/cw_decoder3_for_uiap/tools/003/ST7789)
-- CH32V006 / ST7735: [tools/006/ST7735](/Users/ooe/src/cw_decoder3_for_uiap/tools/006/ST7735)
-- CH32V006 / ST7789: [tools/006/ST7789](/Users/ooe/src/cw_decoder3_for_uiap/tools/006/ST7789)
+- CH32V003 / ST7735: [tools/003/ST7735](tools/003/ST7735)
+- CH32V003 / ST7789: [tools/003/ST7789](tools/003/ST7789)
+- CH32V006 / ST7735: [tools/006/ST7735](tools/006/ST7735)
+- CH32V006 / ST7789: [tools/006/ST7789](tools/006/ST7789)
 
-今回の `v1.7` は CH32V006 のフォント改善版です。
+今回の `v1.8` はトーン判定（ノイズ・混信対策）と速度推定の改善版です。
 
-- CH32V006 / ST7735 `v1.7` macOS: [tools/006/ST7735/mac/firmwareUpdate1.7](/Users/ooe/src/cw_decoder3_for_uiap/tools/006/ST7735/mac/firmwareUpdate1.7)
-- CH32V006 / ST7735 `v1.7` Windows: [tools/006/ST7735/win/firmwareUpdate1.7](/Users/ooe/src/cw_decoder3_for_uiap/tools/006/ST7735/win/firmwareUpdate1.7)
-- CH32V006 / ST7789 `v1.7` macOS: [tools/006/ST7789/mac/firmwareUpdate1.7](/Users/ooe/src/cw_decoder3_for_uiap/tools/006/ST7789/mac/firmwareUpdate1.7)
-- CH32V006 / ST7789 `v1.7` Windows: [tools/006/ST7789/win/firmwareUpdate1.7](/Users/ooe/src/cw_decoder3_for_uiap/tools/006/ST7789/win/firmwareUpdate1.7)
+- CH32V003 / ST7735 `v1.8` macOS: [tools/003/ST7735/mac/firmwareUpdate1.8](tools/003/ST7735/mac/firmwareUpdate1.8)
+- CH32V003 / ST7735 `v1.8` Windows: [tools/003/ST7735/win/firmwareUpdate1.8](tools/003/ST7735/win/firmwareUpdate1.8)
+- CH32V003 / ST7789 `v1.8` macOS: [tools/003/ST7789/mac/firmwareUpdate1.8](tools/003/ST7789/mac/firmwareUpdate1.8)
+- CH32V003 / ST7789 `v1.8` Windows: [tools/003/ST7789/win/firmwareUpdate1.8](tools/003/ST7789/win/firmwareUpdate1.8)
+- CH32V006 / ST7735 `v1.8` macOS: [tools/006/ST7735/mac/firmwareUpdate1.8](tools/006/ST7735/mac/firmwareUpdate1.8)
+- CH32V006 / ST7735 `v1.8` Windows: [tools/006/ST7735/win/firmwareUpdate1.8](tools/006/ST7735/win/firmwareUpdate1.8)
+- CH32V006 / ST7789 `v1.8` macOS: [tools/006/ST7789/mac/firmwareUpdate1.8](tools/006/ST7789/mac/firmwareUpdate1.8)
+- CH32V006 / ST7789 `v1.8` Windows: [tools/006/ST7789/win/firmwareUpdate1.8](tools/006/ST7789/win/firmwareUpdate1.8)
 
 ## 変更履歴
 
