@@ -76,16 +76,16 @@ VS Code でこのフォルダを開き、PlatformIO IDE の機能を使ってビ
 - CH32V006 / ST7735: [tools/006/ST7735](tools/006/ST7735)
 - CH32V006 / ST7789: [tools/006/ST7789](tools/006/ST7789)
 
-今回の `v1.8` はトーン判定（ノイズ・混信対策）と速度推定の改善版です。
+今回の `v1.9` はトーン判定ヒステリシスと速度推定強化によるデコード率改善版です。
 
-- CH32V003 / ST7735 `v1.8` macOS: [tools/003/ST7735/mac/firmwareUpdate1.8](tools/003/ST7735/mac/firmwareUpdate1.8)
-- CH32V003 / ST7735 `v1.8` Windows: [tools/003/ST7735/win/firmwareUpdate1.8](tools/003/ST7735/win/firmwareUpdate1.8)
-- CH32V003 / ST7789 `v1.8` macOS: [tools/003/ST7789/mac/firmwareUpdate1.8](tools/003/ST7789/mac/firmwareUpdate1.8)
-- CH32V003 / ST7789 `v1.8` Windows: [tools/003/ST7789/win/firmwareUpdate1.8](tools/003/ST7789/win/firmwareUpdate1.8)
-- CH32V006 / ST7735 `v1.8` macOS: [tools/006/ST7735/mac/firmwareUpdate1.8](tools/006/ST7735/mac/firmwareUpdate1.8)
-- CH32V006 / ST7735 `v1.8` Windows: [tools/006/ST7735/win/firmwareUpdate1.8](tools/006/ST7735/win/firmwareUpdate1.8)
-- CH32V006 / ST7789 `v1.8` macOS: [tools/006/ST7789/mac/firmwareUpdate1.8](tools/006/ST7789/mac/firmwareUpdate1.8)
-- CH32V006 / ST7789 `v1.8` Windows: [tools/006/ST7789/win/firmwareUpdate1.8](tools/006/ST7789/win/firmwareUpdate1.8)
+- CH32V003 / ST7735 `v1.9` macOS: [tools/003/ST7735/mac/firmwareUpdate1.9](tools/003/ST7735/mac/firmwareUpdate1.9)
+- CH32V003 / ST7735 `v1.9` Windows: [tools/003/ST7735/win/firmwareUpdate1.9](tools/003/ST7735/win/firmwareUpdate1.9)
+- CH32V003 / ST7789 `v1.9` macOS: [tools/003/ST7789/mac/firmwareUpdate1.9](tools/003/ST7789/mac/firmwareUpdate1.9)
+- CH32V003 / ST7789 `v1.9` Windows: [tools/003/ST7789/win/firmwareUpdate1.9](tools/003/ST7789/win/firmwareUpdate1.9)
+- CH32V006 / ST7735 `v1.9` macOS: [tools/006/ST7735/mac/firmwareUpdate1.9](tools/006/ST7735/mac/firmwareUpdate1.9)
+- CH32V006 / ST7735 `v1.9` Windows: [tools/006/ST7735/win/firmwareUpdate1.9](tools/006/ST7735/win/firmwareUpdate1.9)
+- CH32V006 / ST7789 `v1.9` macOS: [tools/006/ST7789/mac/firmwareUpdate1.9](tools/006/ST7789/mac/firmwareUpdate1.9)
+- CH32V006 / ST7789 `v1.9` Windows: [tools/006/ST7789/win/firmwareUpdate1.9](tools/006/ST7789/win/firmwareUpdate1.9)
 
 ## 変更履歴
 
