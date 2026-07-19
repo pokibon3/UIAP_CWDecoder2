@@ -77,16 +77,17 @@ VS Code でこのフォルダを開き、PlatformIO IDE の機能を使ってビ
 - CH32V006 / ST7789: [tools/006/ST7789](tools/006/ST7789)
 
 今回の `v2.0` は傾斜ノイズ(バンドノイズ)による偽符号を抑止する改善版です。
-更新パッケージは `v1.9` のものを最新として掲載しています。
 
-- CH32V003 / ST7735 `v1.9` macOS: [tools/003/ST7735/mac/firmwareUpdate1.9](tools/003/ST7735/mac/firmwareUpdate1.9)
-- CH32V003 / ST7735 `v1.9` Windows: [tools/003/ST7735/win/firmwareUpdate1.9](tools/003/ST7735/win/firmwareUpdate1.9)
-- CH32V003 / ST7789 `v1.9` macOS: [tools/003/ST7789/mac/firmwareUpdate1.9](tools/003/ST7789/mac/firmwareUpdate1.9)
-- CH32V003 / ST7789 `v1.9` Windows: [tools/003/ST7789/win/firmwareUpdate1.9](tools/003/ST7789/win/firmwareUpdate1.9)
-- CH32V006 / ST7735 `v1.9` macOS: [tools/006/ST7735/mac/firmwareUpdate1.9](tools/006/ST7735/mac/firmwareUpdate1.9)
-- CH32V006 / ST7735 `v1.9` Windows: [tools/006/ST7735/win/firmwareUpdate1.9](tools/006/ST7735/win/firmwareUpdate1.9)
-- CH32V006 / ST7789 `v1.9` macOS: [tools/006/ST7789/mac/firmwareUpdate1.9](tools/006/ST7789/mac/firmwareUpdate1.9)
-- CH32V006 / ST7789 `v1.9` Windows: [tools/006/ST7789/win/firmwareUpdate1.9](tools/006/ST7789/win/firmwareUpdate1.9)
+- CH32V003 / ST7735 `v2.0` macOS: [tools/003/ST7735/mac/firmwareUpdate2.0](tools/003/ST7735/mac/firmwareUpdate2.0)
+- CH32V003 / ST7735 `v2.0` Windows: [tools/003/ST7735/win/firmwareUpdate2.0](tools/003/ST7735/win/firmwareUpdate2.0)
+- CH32V003 / ST7789 `v2.0` macOS: [tools/003/ST7789/mac/firmwareUpdate2.0](tools/003/ST7789/mac/firmwareUpdate2.0)
+- CH32V003 / ST7789 `v2.0` Windows: [tools/003/ST7789/win/firmwareUpdate2.0](tools/003/ST7789/win/firmwareUpdate2.0)
+- CH32V006 / ST7735 `v2.0` macOS: [tools/006/ST7735/mac/firmwareUpdate2.0](tools/006/ST7735/mac/firmwareUpdate2.0)
+- CH32V006 / ST7735 `v2.0` Windows: [tools/006/ST7735/win/firmwareUpdate2.0](tools/006/ST7735/win/firmwareUpdate2.0)
+- CH32V006 / ST7789 `v2.0` macOS: [tools/006/ST7789/mac/firmwareUpdate2.0](tools/006/ST7789/mac/firmwareUpdate2.0)
+- CH32V006 / ST7789 `v2.0` Windows: [tools/006/ST7789/win/firmwareUpdate2.0](tools/006/ST7789/win/firmwareUpdate2.0)
+
+`v1.9` のパッケージも各ディレクトリの `firmwareUpdate1.9` に残しています。
 
 ## 変更履歴
 
