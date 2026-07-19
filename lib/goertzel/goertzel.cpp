@@ -38,6 +38,7 @@ static int32_t coeff_h = 23453;
 
 static int32_t side_mag = 0;
 static int32_t side_mag_inst = 0;
+static int32_t side_mag_max = 0;
 static int32_t side_ema_l = 0;
 static int32_t side_ema_h = 0;
 static uint8_t side_ema_started = 0;
@@ -57,6 +58,7 @@ void initGoertzel(int16_t speed)
     setSpeed(speed);
     side_mag = 0;
     side_mag_inst = 0;
+    side_mag_max = 0;
     side_ema_l = 0;
     side_ema_h = 0;
     side_ema_started = 0;
@@ -122,7 +124,17 @@ int32_t goertzel(int16_t *data, int16_t n)
         side_ema_l += (mag_l - side_ema_l) / 4;
         side_ema_h += (mag_h - side_ema_h) / 4;
     }
-    side_mag = (side_ema_l < side_ema_h) ? side_ema_l : side_ema_h;
+    // 比率判定用サイド: min(L,H) ではなく幾何平均 sqrt(L*H)。
+    // 低域から通過帯域へ裾を引く傾斜ノイズでは、min が静かな側だけを
+    // 見て帯域内ノイズを過小評価し偽符号が出る。トーン受信時は両サイド
+    // とも静粛で min とほぼ同値なので感度は落ちない。
+    // sqrt(L)*sqrt(H) == sqrt(L*H): 32bit積のオーバーフローを避ける。
+    side_mag = (int32_t)(isqrt32((uint32_t)side_ema_l) * isqrt32((uint32_t)side_ema_h));
+    {
+        int32_t inst_max = (mag_l > mag_h) ? mag_l : mag_h;
+        int32_t ema_max = (side_ema_l > side_ema_h) ? side_ema_l : side_ema_h;
+        side_mag_max = (inst_max > ema_max) ? inst_max : ema_max;
+    }
 
     return goertzel_mag(q1c, q2c, coeff_c);
 }
@@ -137,6 +149,13 @@ int32_t goertzelSideMag(void)
 int32_t goertzelSideMagInst(void)
 {
     return side_mag_inst;
+}
+
+// Max side level: max of both EMAs and both instantaneous side mags.
+// Used to reject out-of-band noise leaking into the center bin.
+int32_t goertzelSideMagMax(void)
+{
+    return side_mag_max;
 }
 
 #endif

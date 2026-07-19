@@ -16,7 +16,8 @@
 #define NOISE_BLANKER_ENABLED 1
 // トーン判定: 中心ビンがサイドレベル(±341.33Hzビンの平滑化後min)の
 // 何倍あれば正弦波とみなすか。ホワイトノイズは全ビンほぼ同レベル、
-// 正弦波は10倍以上になる。min採用により片側の混信ではトーンを棄却しない。
+// 正弦波は10倍以上になる。サイドは幾何平均√(L×H)を使用 (v2.0):
+// min(L,H)だと低域から裾を引く傾斜ノイズが静かな側との比較をすり抜ける。
 #define TONE_SIDE_RATIO 3
 // トーン判定のヒステリシス(シュミットトリガ):
 // ON  = 振幅 0.6×limit 超 かつ 中心 > 3×サイド
@@ -360,6 +361,7 @@ int cwDecoder(void)
 		magnitude = goertzel(morseData, GOERTZEL_SAMPLES);
 		magnitude = normalize_decoder_magnitude(magnitude);
 		int32_t side_mag = normalize_decoder_magnitude(goertzelSideMag());
+		int32_t side_max = normalize_decoder_magnitude(goertzelSideMagMax());
 		// 立ち上がり(現在LOW)時のみ瞬時サイドも見る:
 		// 広帯域インパルスはEMAが追従する前の1ブロック目をすり抜けるため。
 		if (filteredstate == GPIO_LOW) {
@@ -388,9 +390,13 @@ int cwDecoder(void)
 		// (振幅が十分でも、サイドビンとの比が小さければノイズとして棄却。
 		//  ON/OFF のしきい値を分け、中間帯は前状態保持でバタつきを抑える)
 		////////////////////////////////////
+		// tone_on には「中心が両サイドの max (EMA/瞬時とも) を超える」条件も課す:
+		// 帯域外ノイズが片サイドだけを上げつつ中心へ漏れるケースを拒否。
+		// 本物のトーンは±100Hz程度ズレていても中心が両サイドより必ず大きい。
 		{
 			uint8_t tone_on  = (((uint32_t)magnitude * 5U) > ((uint32_t)magnitudelimit * 3U)) &&  // 0.6x
-			                   (magnitude > side_mag * TONE_SIDE_RATIO);
+			                   (magnitude > side_mag * TONE_SIDE_RATIO) &&
+			                   (magnitude > side_max);
 			uint8_t tone_off = (((uint32_t)magnitude * 5U) < ((uint32_t)magnitudelimit * 2U)) || // 0.4x
 			                   (magnitude * 10 < side_mag * TONE_SIDE_RATIO_OFF_X10);
 			if (tone_on) {
