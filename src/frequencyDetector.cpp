@@ -174,8 +174,10 @@ int freqDetector(int8_t *vReal, int8_t *vImag)
 	tft_print(label2, FONT_SCALE_8X8);
 
 	while (1) {
+		// display_mag_q8[] 配列 (256B) はスタックに置かず、バー計算時に mag[] から
+		// 求める (v2.1)。003 はスタックの空きが約 0.5KB しかなく、溢れると直下の
+		// shared_buf (FFT バッファ) を壊してスペアナ画面が出なくなる
 		uint16_t mag[SAMPLES / 2];
-		uint32_t display_mag_q8[SAMPLES / 2];
 #if FFT_FPS_MEASURE
 		static uint32_t fps_last_ms = 0;
 		static uint16_t fps_frames = 0;
@@ -208,7 +210,6 @@ TEST_LOW
 			for (int i = 0; i < SAMPLES / 2; i++) {
 				float m = sqrtf(vReal[i] * vReal[i] + vImag[i] * vImag[i]) * norm;
 				mag[i] = (m > 65535.0f) ? 65535U : (uint16_t)m;
-				display_mag_q8[i] = (uint32_t)mag[i] << 8;
 			}
 		}
 #else
@@ -228,13 +229,6 @@ TEST_LOW
 			int16_t vi = vImag[i];
 			uint16_t m = (uint16_t)(abs(vr) + abs(vi));
 			mag[i] = m;
-			display_mag_q8[i] = (uint32_t)m << 8;
-		}
-		for (int i = 1; i < (SAMPLES / 2) - 1; i++) {
-			// Light bin interpolation for CH32V003: keep peak detection on raw mag[],
-			// but smooth the displayed bar height to reduce coarse visible steps.
-			display_mag_q8[i] =
-				(((uint32_t)mag[i] * 3U) + (uint32_t)mag[i - 1] + (uint32_t)mag[i + 1]) << 6;
 		}
 #endif
 
@@ -260,7 +254,16 @@ TEST_LOW
 			// get more visible intermediate height steps without changing maxValue.
 			gain_den = FFT_Y_GAIN_DEN * 8U;
 #endif
-			uint32_t target_q8 = (display_mag_q8[i] * (uint32_t)SCALE * gain_num + (gain_den / 2U)) / gain_den;
+			uint32_t display_mag_q8 = (uint32_t)m << 8;
+#if !defined(BOARD_CH32V006)
+			// Light bin interpolation for CH32V003: keep peak detection on raw mag[],
+			// but smooth the displayed bar height to reduce coarse visible steps.
+			if (i < (SAMPLES / 2) - 1) {
+				display_mag_q8 =
+					(((uint32_t)m * 3U) + (uint32_t)mag[i - 1] + (uint32_t)mag[i + 1]) << 6;
+			}
+#endif
+			uint32_t target_q8 = (display_mag_q8 * (uint32_t)SCALE * gain_num + (gain_den / 2U)) / gain_den;
 			if (target_q8 >= bar_h_q8[i]) {
 				bar_h_q8[i] = (uint16_t)(bar_h_q8[i] + (((target_q8 - bar_h_q8[i]) * 7U + 7U) / 8U));
 			} else {

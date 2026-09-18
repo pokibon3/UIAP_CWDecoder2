@@ -29,8 +29,25 @@
 // 短点+長点ペアで求めた単位長がこの範囲なら速度推定を即時スナップする。
 #define WPM_CORE_UNIT_MIN 30
 #define WPM_CORE_UNIT_MAX 66
-static uint16_t magnitudelimit = 140;  		// 以前は 140
-static uint16_t magnitudelimit_low = 140;
+static int32_t magnitudelimit = 140;
+static int32_t magnitudelimit_low = 140;
+// 振幅しきい値 (magnitudelimit) の追従 (v2.1): 立ち上がりは速く (1/6 = τ35ms)、
+// 下降は遅く (1/64 = τ0.38s) してピークホールド的に振る舞わせる。
+// 旧来の対称 1/6 では文字間ギャップで limit がノイズ床まで崩落して振幅条件が
+// 無効化され、絶対床 140 が「入力を極端に絞ったときだけ」スケルチとして
+// 働いていた (ノイズ混じりは音量をかなり下げないとデコードできなかった)。
+#define LIMIT_ATTACK_DIV 6
+#define LIMIT_DECAY_DIV 64
+// ノイズ床に連動した相対スケルチ (v2.1): トーンらしくないブロックの中心
+// マグニチュードを遅い EMA (1/128 = τ0.75s) で追い、limit の床を
+// noise_floor x 6 にする (ON 下限 = 0.6 x 床 = ノイズ平均 x 3.6)。
+// EMA は Q8 で蓄積する (整数 EMA は小さな差で動かず片道ラチェットになる)。
+// (ESP32版 cw_decoder4 v2.1/v2.2 の対策を移植。同版は実機ログで x8 に
+//  上げているが、窓条件が異なるため x6 から調整する)
+static int32_t noise_floor = 0;
+static int32_t noise_acc = 0;       // noise_floor の Q8 蓄積値
+#define NOISE_FLOOR_DIV 128
+#define NOISE_SQUELCH_X10 60
 static uint16_t realstate = GPIO_LOW;
 static uint16_t realstatebefore = GPIO_LOW;
 static uint16_t filteredstate = GPIO_LOW;
@@ -41,8 +58,13 @@ static uint32_t lasthighduration;
 static uint32_t hightimesavg = 60;
 static uint32_t startttimelow;
 static uint32_t lowduration;
-static uint32_t laststarttime = 0;
-static uint16_t nbtime = 6;  /// ノイズブランカの時間(ms)
+// ノイズブランカの積分値 (0..深さ)
+static uint8_t nb_acc = 0;
+// 1ブロック = 48/8192Hz = 5.86ms。深さは 0.35 単位ぶんのブロック数 (四捨五入)
+// = unit[ms] x 0.35 / 5.86 ≒ unit x 6 / 100。上限 3 ブロック (17.6ms) は
+// 推定が遅い側へ外れても 50WPM の短点 (24ms) を残すための保険
+#define NB_DEPTH_MIN 2
+#define NB_DEPTH_MAX 3
 
 static char code[20];
 static uint16_t stop = GPIO_LOW;
@@ -160,24 +182,6 @@ static gap_type_t classify_gap(uint32_t gap, uint32_t unit)
 }
 
 //==================================================================
-//	ノイズブランカ時間を短点長から算出
-//==================================================================
-static uint16_t compute_nbtime(uint32_t unit_ms)
-{
-	if (unit_ms == 0) return 10;
-	uint32_t t = unit_ms / 5; // 1/5 を基本
-	if (t < (unit_ms / 3)) {
-		// 1/5〜1/3の範囲に寄せる
-		uint32_t max_t = unit_ms / 3;
-		if (t > max_t) t = max_t;
-	}
-	if (t < 3) t = 3;
-	// Cap debounce to allow up to 50 WPM (dot ~= 24ms, debounce <= ~1/3).
-	if (t > 8) t = 8;
-	return (uint16_t)t;
-}
-
-//==================================================================
 //	単位長(短点)の推定ヘルパー
 //==================================================================
 // 比率~1:3のペア(短点+長点、または短点+文字間ギャップ等)から単位長候補を
@@ -276,6 +280,10 @@ int cwd_setup()
 {
 	cw_display_setup();
 	initGoertzel(speed);
+	magnitudelimit = magnitudelimit_low;
+	noise_floor = 0;
+	noise_acc = 0;
+	nb_acc = 0;
 	sampling_period_us = 900000 / GOERTZEL_SAMPLING_FREQUENCY;
 	reset_morse_buffers();
 	wpm = 0;
@@ -378,11 +386,31 @@ int cwDecoder(void)
 		///////////////////////////////////////////////////////////
 		// 振幅しきい値を自動更新
 		///////////////////////////////////////////////////////////
-  		if (magnitude > magnitudelimit_low){
-			magnitudelimit = (magnitudelimit +((magnitude - magnitudelimit)/6));  /// 移動平均フィルタ
+		// ノイズ床の更新。判定状態で選別すると ON に失敗した信号が床に
+		// 取り込まれて二度と ON にならない (正帰還) ので、ブロックの性質で
+		// 選別する: トーンらしくない (中心 <= サイド x 2) か、床未満のブロック
+		// だけを取り込む。CW のマークは狭帯域なので除外され、ノイズが本当に
+		// 増えたときは広帯域なので追従する。
+		{
+			uint8_t tone_like = (magnitude > side_mag * 2);
+			if (noise_acc == 0) {
+				noise_acc = magnitude << 8;
+			} else if (!tone_like || magnitude < noise_floor) {
+				noise_acc += ((magnitude << 8) - noise_acc) / NOISE_FLOOR_DIV;
+			}
+			noise_floor = noise_acc >> 8;
+		}
+		int32_t limit_floor = noise_floor * NOISE_SQUELCH_X10 / 10;
+		if (limit_floor < magnitudelimit_low) {
+			limit_floor = magnitudelimit_low;
+		}
+		// 立ち上がり速く、下降は遅く。床はノイズ連動
+  		if (magnitude > magnitudelimit_low) {
+			int32_t d = magnitude - magnitudelimit;
+			magnitudelimit += (d > 0) ? d / LIMIT_ATTACK_DIV : d / LIMIT_DECAY_DIV;
   		}
-  		if (magnitudelimit < magnitudelimit_low) {
-			magnitudelimit = magnitudelimit_low;
+  		if (magnitudelimit < limit_floor) {
+			magnitudelimit = limit_floor;
 		}
 
 		////////////////////////////////////
@@ -408,26 +436,29 @@ int cwDecoder(void)
 		}
 
 		/////////////////////////////////////////////////////
-		// ノイズブランカで状態を安定化
+		// ノイズブランカ (v2.1): realstate を上下カウンタで積分する。
+		// 旧「nbtime ms 安定したら反映」方式は、しきい値付近で realstate が
+		// ブロック毎に往復するとタイマーが毎回リセットされて反映されず、
+		// ギャップが埋まって短点 2 つが長点 1 本に融合していた (S→R)。
+		// 積分方式なら往復しても多数決で収束し、短いパルスも潰せる。
+		// 立ち上がり/立ち下がりを同じ段数だけ遅らせるので要素長は保たれる
+		// (長い無音後の即時 ON の特例は、その要素だけ長く測れるので廃止)。
 		/////////////////////////////////////////////////////
-		if (realstate != realstatebefore){
-			laststarttime = millis();
-		}
 #if NOISE_BLANKER_ENABLED
 		{
 			uint32_t unit = (hightimesavg > 0) ? hightimesavg : highduration;
-			nbtime = compute_nbtime(unit);
-		}
-		// Bypass debounce for the first rising edge after a long gap.
-		{
-			uint32_t unit = (hightimesavg > 0) ? hightimesavg : highduration;
-			if (filteredstate == GPIO_LOW && realstate == GPIO_HIGH && lowduration > unit * 6) {
-				filteredstate = realstate;
+			uint32_t n = (unit * 6 + 50) / 100;
+			if (n < NB_DEPTH_MIN) n = NB_DEPTH_MIN;
+			if (n > NB_DEPTH_MAX) n = NB_DEPTH_MAX;
+			if (realstate == GPIO_HIGH) {
+				if (nb_acc < (uint8_t)n) nb_acc++;
+			} else if (nb_acc > 0) {
+				nb_acc--;
 			}
-		}
-		if ((millis()-laststarttime)> nbtime) {
-			if (realstate != filteredstate) {
-				filteredstate = realstate;
+			if (nb_acc >= (uint8_t)n) {
+				filteredstate = GPIO_HIGH;
+			} else if (nb_acc == 0) {
+				filteredstate = GPIO_LOW;
 			}
 		}
 #else
