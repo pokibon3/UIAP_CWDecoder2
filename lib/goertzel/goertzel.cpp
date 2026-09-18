@@ -23,18 +23,21 @@
 #if !defined(BOARD_CH32V006)
 
 #include <stdint.h>
+#include "goertzel.h"
 
 // coeff_q14 = round(2 * cos(2 * pi * f / 8192) * 16384)
-static const int32_t coeff_tbl[3][3] = {
+static const int32_t coeff_tbl[GOERTZEL_TONES][3] = {
 	// center   low(-341.3Hz) high(+341.3Hz)
-	{ 28576, 31753, 23453 },  // 666.7 Hz (sides 325.4 / 1008.0)
-	{ 26300, 30463, 20345 },  // 833.3 Hz (sides 492.0 / 1174.6)
+	{ 29359, 32125, 24592 },  //  600 Hz (sides 258.7 /  941.3)
+	{ 28158, 31536, 22860 },  //  700 Hz (sides 358.7 / 1041.3)
+	{ 26791, 30761, 20994 },  //  800 Hz (sides 458.7 / 1141.3)
+	{ 25266, 29806, 19005 },  //  900 Hz (sides 558.7 / 1241.3)
 	{ 23593, 28675, 16904 },  // 1000 Hz (sides 658.7 / 1341.3)
 };
 
-static int32_t coeff_c = 28576;
-static int32_t coeff_l = 31753;
-static int32_t coeff_h = 23453;
+static int32_t coeff_c = 29359;
+static int32_t coeff_l = 32125;
+static int32_t coeff_h = 24592;
 
 static int32_t side_mag = 0;
 static int32_t side_mag_inst = 0;
@@ -45,7 +48,7 @@ static uint8_t side_ema_started = 0;
 
 void setSpeed(int16_t speed)
 {
-    if (speed < 0 || speed > 2) {
+    if (speed < 0 || speed >= GOERTZEL_TONES) {
         speed = 0;
     }
     coeff_c = coeff_tbl[speed][0];

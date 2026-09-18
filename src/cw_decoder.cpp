@@ -252,7 +252,7 @@ static int check_sw()
 
 	if (val == 3) {
 		speed += 1;
-		if (speed > 2) speed = 0;
+		if (speed >= GOERTZEL_TONES) speed = 0;
 		setSpeed(speed);
 		cw_display_update_info(wpm, (uint8_t)sw, speed);
 		cw_display_tick();

@@ -24,18 +24,21 @@
 
 #include <math.h>
 #include <stdint.h>
+#include "goertzel.h"
 
 // coeff = 2 * cos(2 * pi * f / 8192)
-static const float coeff_tbl[3][3] = {
+static const float coeff_tbl[GOERTZEL_TONES][3] = {
 	// center      low(-341.3Hz) high(+341.3Hz)
-	{ 1.744167f, 1.938046f, 1.431426f },  // 666.7 Hz (sides 325.4 / 1008.0)
-	{ 1.605226f, 1.859301f, 1.241759f },  // 833.3 Hz (sides 492.0 / 1174.6)
+	{ 1.791932f, 1.960768f, 1.500979f },  //  600 Hz (sides 258.7 /  941.3)
+	{ 1.718604f, 1.924799f, 1.395288f },  //  700 Hz (sides 358.7 / 1041.3)
+	{ 1.635170f, 1.877513f, 1.281392f },  //  800 Hz (sides 458.7 / 1141.3)
+	{ 1.542121f, 1.819187f, 1.159962f },  //  900 Hz (sides 558.7 / 1241.3)
 	{ 1.440005f, 1.750164f, 1.031712f },  // 1000 Hz (sides 658.7 / 1341.3)
 };
 
-static float coeff_c = 1.744167f;
-static float coeff_l = 1.938046f;
-static float coeff_h = 1.431426f;
+static float coeff_c = 1.791932f;
+static float coeff_l = 1.960768f;
+static float coeff_h = 1.500979f;
 
 static int32_t side_mag = 0;
 static int32_t side_mag_inst = 0;
@@ -46,7 +49,7 @@ static uint8_t side_ema_started = 0;
 
 void setSpeed(int16_t speed)
 {
-    if (speed < 0 || speed > 2) {
+    if (speed < 0 || speed >= GOERTZEL_TONES) {
         speed = 0;
     }
     coeff_c = coeff_tbl[speed][0];

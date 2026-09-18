@@ -32,7 +32,7 @@ MODE SW を押すことでモード切り替えができます。
 モールス信号を MIC 入力し、デコード結果を LCD に表示します。
 
 - SW1: 英文 / 和文切り替え
-- SW2: 666Hz / 833Hz / 1000Hz 切り替え
+- SW2: 600Hz / 700Hz / 800Hz / 900Hz / 1000Hz 切り替え（起動時 600Hz）
 
 ### FFT アナライザ
 
@@ -76,18 +76,18 @@ VS Code でこのフォルダを開き、PlatformIO IDE の機能を使ってビ
 - CH32V006 / ST7735: [tools/006/ST7735](tools/006/ST7735)
 - CH32V006 / ST7789: [tools/006/ST7789](tools/006/ST7789)
 
-今回の `v2.0` は傾斜ノイズ(バンドノイズ)による偽符号を抑止する改善版です。
+今回の `v2.1` はデコード周波数を 600〜1000Hz の 100Hz 刻み5段切り替えにした版です。
 
-- CH32V003 / ST7735 `v2.0` macOS: [tools/003/ST7735/mac/firmwareUpdate2.0](tools/003/ST7735/mac/firmwareUpdate2.0)
-- CH32V003 / ST7735 `v2.0` Windows: [tools/003/ST7735/win/firmwareUpdate2.0](tools/003/ST7735/win/firmwareUpdate2.0)
-- CH32V003 / ST7789 `v2.0` macOS: [tools/003/ST7789/mac/firmwareUpdate2.0](tools/003/ST7789/mac/firmwareUpdate2.0)
-- CH32V003 / ST7789 `v2.0` Windows: [tools/003/ST7789/win/firmwareUpdate2.0](tools/003/ST7789/win/firmwareUpdate2.0)
-- CH32V006 / ST7735 `v2.0` macOS: [tools/006/ST7735/mac/firmwareUpdate2.0](tools/006/ST7735/mac/firmwareUpdate2.0)
-- CH32V006 / ST7735 `v2.0` Windows: [tools/006/ST7735/win/firmwareUpdate2.0](tools/006/ST7735/win/firmwareUpdate2.0)
-- CH32V006 / ST7789 `v2.0` macOS: [tools/006/ST7789/mac/firmwareUpdate2.0](tools/006/ST7789/mac/firmwareUpdate2.0)
-- CH32V006 / ST7789 `v2.0` Windows: [tools/006/ST7789/win/firmwareUpdate2.0](tools/006/ST7789/win/firmwareUpdate2.0)
+- CH32V003 / ST7735 `v2.1` macOS: [tools/003/ST7735/mac/firmwareUpdate2.1](tools/003/ST7735/mac/firmwareUpdate2.1)
+- CH32V003 / ST7735 `v2.1` Windows: [tools/003/ST7735/win/firmwareUpdate2.1](tools/003/ST7735/win/firmwareUpdate2.1)
+- CH32V003 / ST7789 `v2.1` macOS: [tools/003/ST7789/mac/firmwareUpdate2.1](tools/003/ST7789/mac/firmwareUpdate2.1)
+- CH32V003 / ST7789 `v2.1` Windows: [tools/003/ST7789/win/firmwareUpdate2.1](tools/003/ST7789/win/firmwareUpdate2.1)
+- CH32V006 / ST7735 `v2.1` macOS: [tools/006/ST7735/mac/firmwareUpdate2.1](tools/006/ST7735/mac/firmwareUpdate2.1)
+- CH32V006 / ST7735 `v2.1` Windows: [tools/006/ST7735/win/firmwareUpdate2.1](tools/006/ST7735/win/firmwareUpdate2.1)
+- CH32V006 / ST7789 `v2.1` macOS: [tools/006/ST7789/mac/firmwareUpdate2.1](tools/006/ST7789/mac/firmwareUpdate2.1)
+- CH32V006 / ST7789 `v2.1` Windows: [tools/006/ST7789/win/firmwareUpdate2.1](tools/006/ST7789/win/firmwareUpdate2.1)
 
-`v1.9` のパッケージも各ディレクトリの `firmwareUpdate1.9` に残しています。
+`v2.0` 以前のパッケージも各ディレクトリの `firmwareUpdate2.0` などに残しています。
 
 ## 変更履歴
 
@@ -139,6 +139,9 @@ VS Code でこのフォルダを開き、PlatformIO IDE の機能を使ってビ
 - V2.0
   - サイド判定を min(low, high) から幾何平均 √(low×high) に変更。低域から通過帯域へ裾を引く傾斜ノイズ（バンドノイズ）が、静かな側のサイドとの比較をすり抜けて偽符号になる問題を抑止（ESP32 版 cw_decoder4 v2.0 で実機検証済みの対策を移植。003 整数版 / 006 float 版とも対応）
   - トーンON条件に「中心 > max(サイドEMA, サイド瞬時値)」を追加
+- V2.1
+  - デコード周波数を 600 / 700 / 800 / 900 / 1000Hz の5段切り替えに変更（SW2、起動時は 600Hz）
+  - 従来 700 / 800Hz と表示していた設定は実際には 666.7 / 833.3Hz だったため、表示どおりの周波数に修正
 
 ## 参考
 

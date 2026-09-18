@@ -22,12 +22,12 @@ static const int colums = 13;
 
 static const char title1[] = " CW Decoder  ";
 static const char title2[] = "  for UIAP   ";
-static const char title3[] = "Version v2.0 ";
+static const char title3[] = "Version v2.1 ";
 static uint8_t first_flg = 1;
 
-static const uint16_t tone_hz[] = { 700, 800, 1000 };
+static const uint16_t tone_hz[] = { 600, 700, 800, 900, 1000 };
 #if !defined(TFT_ST7789)
-static const char *tone[] = { " 700", " 800", "1000" };
+static const char *tone[] = { " 600", " 700", " 800", " 900", "1000" };
 #endif
 static char info_last_buf[24];
 static uint8_t info_sep_drawn = 0;
