@@ -76,16 +76,16 @@ VS Code でこのフォルダを開き、PlatformIO IDE の機能を使ってビ
 - CH32V006 / ST7735: [tools/006/ST7735](tools/006/ST7735)
 - CH32V006 / ST7789: [tools/006/ST7789](tools/006/ST7789)
 
-今回の `v2.1` はデコード周波数の5段切り替え（600〜1000Hz）と、ノイズ混じり信号のデコード改善を行った版です。
+今回の `v2.2` は、符号内スペースが短点より長い送信（手送りなどで重みが軽い CW）を正しく 1 文字にまとめられるようにした版です。
 
-- CH32V003 / ST7735 `v2.1` macOS: [tools/003/ST7735/mac/firmwareUpdate2.1](tools/003/ST7735/mac/firmwareUpdate2.1)
-- CH32V003 / ST7735 `v2.1` Windows: [tools/003/ST7735/win/firmwareUpdate2.1](tools/003/ST7735/win/firmwareUpdate2.1)
-- CH32V003 / ST7789 `v2.1` macOS: [tools/003/ST7789/mac/firmwareUpdate2.1](tools/003/ST7789/mac/firmwareUpdate2.1)
-- CH32V003 / ST7789 `v2.1` Windows: [tools/003/ST7789/win/firmwareUpdate2.1](tools/003/ST7789/win/firmwareUpdate2.1)
-- CH32V006 / ST7735 `v2.1` macOS: [tools/006/ST7735/mac/firmwareUpdate2.1](tools/006/ST7735/mac/firmwareUpdate2.1)
-- CH32V006 / ST7735 `v2.1` Windows: [tools/006/ST7735/win/firmwareUpdate2.1](tools/006/ST7735/win/firmwareUpdate2.1)
-- CH32V006 / ST7789 `v2.1` macOS: [tools/006/ST7789/mac/firmwareUpdate2.1](tools/006/ST7789/mac/firmwareUpdate2.1)
-- CH32V006 / ST7789 `v2.1` Windows: [tools/006/ST7789/win/firmwareUpdate2.1](tools/006/ST7789/win/firmwareUpdate2.1)
+- CH32V003 / ST7735 `v2.2` macOS: [tools/003/ST7735/mac/firmwareUpdate2.2](tools/003/ST7735/mac/firmwareUpdate2.2)
+- CH32V003 / ST7735 `v2.2` Windows: [tools/003/ST7735/win/firmwareUpdate2.2](tools/003/ST7735/win/firmwareUpdate2.2)
+- CH32V003 / ST7789 `v2.2` macOS: [tools/003/ST7789/mac/firmwareUpdate2.2](tools/003/ST7789/mac/firmwareUpdate2.2)
+- CH32V003 / ST7789 `v2.2` Windows: [tools/003/ST7789/win/firmwareUpdate2.2](tools/003/ST7789/win/firmwareUpdate2.2)
+- CH32V006 / ST7735 `v2.2` macOS: [tools/006/ST7735/mac/firmwareUpdate2.2](tools/006/ST7735/mac/firmwareUpdate2.2)
+- CH32V006 / ST7735 `v2.2` Windows: [tools/006/ST7735/win/firmwareUpdate2.2](tools/006/ST7735/win/firmwareUpdate2.2)
+- CH32V006 / ST7789 `v2.2` macOS: [tools/006/ST7789/mac/firmwareUpdate2.2](tools/006/ST7789/mac/firmwareUpdate2.2)
+- CH32V006 / ST7789 `v2.2` Windows: [tools/006/ST7789/win/firmwareUpdate2.2](tools/006/ST7789/win/firmwareUpdate2.2)
 
 `v2.0` 以前のパッケージも各ディレクトリの `firmwareUpdate2.0` などに残しています。
 
@@ -145,6 +145,21 @@ VS Code でこのフォルダを開き、PlatformIO IDE の機能を使ってビ
   - ノイズ混じりの信号を音量を絞らずにデコードできるよう、振幅しきい値の床をノイズ床連動（×6）に変更し入力レベル非依存化。しきい値の追従は立ち上がり速く（1/6）、下降は遅く（1/64）
   - ノイズブランカを上下カウンタの積分方式に変更（深さ 0.35 単位、2〜3 ブロック）。しきい値付近のバタつきでギャップが埋まり短点が長点に融合する誤りを抑止（ESP32 版 cw_decoder4 v2.1/v2.2 の対策を移植）
   - スペアナ画面でスタックが溢れて FFT バッファを壊し、画面が出なくなることがある問題を修正
+- V2.2
+  - 符号内スペースが短点より長い送信でデコードが全崩れする問題を修正。符号内/文字間の境界を
+    固定の 1.5 単位から、符号内スペースの実測に追従する値に変更（ESP32 版 cw_decoder4 v3.2 の
+    対策を移植）。キーイングの重み（符号内スペース ÷ 短点）は送り手によって 1:1 とは限らず、
+    実測した POTA QSO 録音は 1.63 倍あった（短点 51ms / 長点 165ms に対し符号内スペース 83ms。
+    長点比 3.24、語間 6.8 短点はどちらも標準的で、崩れているのは符号内スペースだけ）。
+    マーク由来の単位長だけで切ると符号内スペースが全て文字間と判定され、1 文字が要素ごとに
+    ばらけてデコード結果が E/T だらけになる。境界は「実測した符号内スペース長」と
+    「あるべき文字間（3 単位）」の中点に置く
+  - 上記は変数どうしの乗除算を使わずに書いてあるので、GCC がターゲットに応じた形を選ぶ。
+    CH32V003（`rv32ec`、ハード乗算も除算も無し）では `unit * 3` がシフト＋加算に、
+    CH32V006（`rv32ec_zmmul`、乗算あり）では `mul` 命令になる。どちらも
+    `__mulsi3` / `__udivsi3` を新たに呼ばない（逆アセンブルで確認済み。Flash は +156 バイト）
+  - 略号 `UR`（`..-.-.`）を追加。`UR 5NN` のように RST の前へ続けて送られる
+  - 略号 `BK` が制御文字（0x08）として表示に流れていた問題を修正。`BK` と出す
 
 ## 参考
 
