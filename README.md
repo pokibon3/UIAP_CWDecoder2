@@ -76,18 +76,18 @@ VS Code でこのフォルダを開き、PlatformIO IDE の機能を使ってビ
 - CH32V006 / ST7735: [tools/006/ST7735](tools/006/ST7735)
 - CH32V006 / ST7789: [tools/006/ST7789](tools/006/ST7789)
 
-今回の `v2.1` はデコード周波数の5段切り替え（600〜1000Hz）と、ノイズ混じり信号のデコード改善を行った版です。
+今回の `v2.3` は、信号の無いノイズだけの区間で E / T が散発的に出るのを抑え（7MHz のバンドノイズで偽文字が約 5 分の 1）、雑音の中で短点 2 つが長点 1 本に化ける誤りを減らした版です。
 
-- CH32V003 / ST7735 `v2.1` macOS: [tools/003/ST7735/mac/firmwareUpdate2.1](tools/003/ST7735/mac/firmwareUpdate2.1)
-- CH32V003 / ST7735 `v2.1` Windows: [tools/003/ST7735/win/firmwareUpdate2.1](tools/003/ST7735/win/firmwareUpdate2.1)
-- CH32V003 / ST7789 `v2.1` macOS: [tools/003/ST7789/mac/firmwareUpdate2.1](tools/003/ST7789/mac/firmwareUpdate2.1)
-- CH32V003 / ST7789 `v2.1` Windows: [tools/003/ST7789/win/firmwareUpdate2.1](tools/003/ST7789/win/firmwareUpdate2.1)
-- CH32V006 / ST7735 `v2.1` macOS: [tools/006/ST7735/mac/firmwareUpdate2.1](tools/006/ST7735/mac/firmwareUpdate2.1)
-- CH32V006 / ST7735 `v2.1` Windows: [tools/006/ST7735/win/firmwareUpdate2.1](tools/006/ST7735/win/firmwareUpdate2.1)
-- CH32V006 / ST7789 `v2.1` macOS: [tools/006/ST7789/mac/firmwareUpdate2.1](tools/006/ST7789/mac/firmwareUpdate2.1)
-- CH32V006 / ST7789 `v2.1` Windows: [tools/006/ST7789/win/firmwareUpdate2.1](tools/006/ST7789/win/firmwareUpdate2.1)
+- CH32V003 / ST7735 `v2.3` macOS: [tools/003/ST7735/mac/firmwareUpdate2.3](tools/003/ST7735/mac/firmwareUpdate2.3)
+- CH32V003 / ST7735 `v2.3` Windows: [tools/003/ST7735/win/firmwareUpdate2.3](tools/003/ST7735/win/firmwareUpdate2.3)
+- CH32V003 / ST7789 `v2.3` macOS: [tools/003/ST7789/mac/firmwareUpdate2.3](tools/003/ST7789/mac/firmwareUpdate2.3)
+- CH32V003 / ST7789 `v2.3` Windows: [tools/003/ST7789/win/firmwareUpdate2.3](tools/003/ST7789/win/firmwareUpdate2.3)
+- CH32V006 / ST7735 `v2.3` macOS: [tools/006/ST7735/mac/firmwareUpdate2.3](tools/006/ST7735/mac/firmwareUpdate2.3)
+- CH32V006 / ST7735 `v2.3` Windows: [tools/006/ST7735/win/firmwareUpdate2.3](tools/006/ST7735/win/firmwareUpdate2.3)
+- CH32V006 / ST7789 `v2.3` macOS: [tools/006/ST7789/mac/firmwareUpdate2.3](tools/006/ST7789/mac/firmwareUpdate2.3)
+- CH32V006 / ST7789 `v2.3` Windows: [tools/006/ST7789/win/firmwareUpdate2.3](tools/006/ST7789/win/firmwareUpdate2.3)
 
-`v2.0` 以前のパッケージも各ディレクトリの `firmwareUpdate2.0` などに残しています。
+`v2.2` 以前のパッケージも各ディレクトリの `firmwareUpdate2.2` などに残しています。
 
 ## 変更履歴
 
@@ -145,6 +145,37 @@ VS Code でこのフォルダを開き、PlatformIO IDE の機能を使ってビ
   - ノイズ混じりの信号を音量を絞らずにデコードできるよう、振幅しきい値の床をノイズ床連動（×6）に変更し入力レベル非依存化。しきい値の追従は立ち上がり速く（1/6）、下降は遅く（1/64）
   - ノイズブランカを上下カウンタの積分方式に変更（深さ 0.35 単位、2〜3 ブロック）。しきい値付近のバタつきでギャップが埋まり短点が長点に融合する誤りを抑止（ESP32 版 cw_decoder4 v2.1/v2.2 の対策を移植）
   - スペアナ画面でスタックが溢れて FFT バッファを壊し、画面が出なくなることがある問題を修正
+- V2.2
+  - 符号内スペースが短点より長い送信でデコードが全崩れする問題を修正。符号内/文字間の境界を
+    固定の 1.5 単位から、符号内スペースの実測に追従する値に変更（ESP32 版 cw_decoder4 v3.2 の
+    対策を移植）。キーイングの重み（符号内スペース ÷ 短点）は送り手によって 1:1 とは限らず、
+    実測した POTA QSO 録音は 1.63 倍あった（短点 51ms / 長点 165ms に対し符号内スペース 83ms。
+    長点比 3.24、語間 6.8 短点はどちらも標準的で、崩れているのは符号内スペースだけ）。
+    マーク由来の単位長だけで切ると符号内スペースが全て文字間と判定され、1 文字が要素ごとに
+    ばらけてデコード結果が E/T だらけになる。境界は「実測した符号内スペース長」と
+    「あるべき文字間（3 単位）」の中点に置く
+  - 上記は変数どうしの乗除算を使わずに書いてあるので、GCC がターゲットに応じた形を選ぶ。
+    CH32V003（`rv32ec`、ハード乗算も除算も無し）では `unit * 3` がシフト＋加算に、
+    CH32V006（`rv32ec_zmmul`、乗算あり）では `mul` 命令になる。どちらも
+    `__mulsi3` / `__udivsi3` を新たに呼ばない（逆アセンブルで確認済み。Flash は +156 バイト）
+  - 略号 `UR`（`..-.-.`）を追加。`UR 5NN` のように RST の前へ続けて送られる
+  - 略号 `BK` が制御文字（0x08）として表示に流れていた問題を修正。`BK` と出す
+- V2.3
+  - ノイズだけを受信しているときに E / T が散発的に出るのを抑止。直近 12 文字のうち 1 要素の
+    文字が 9 個以上を占めるあいだ、1 要素の文字を捨てる。抑止した分も履歴に数えるので、ノイズが
+    止まれば自然に復帰する（ESP32 版 cw_decoder4 の対策を移植）。1 文字ごとの特徴では本物と
+    区別できず、効くのは文脈だけ（本物の CW の E / T は 19〜43%、ノイズだけの区間では 69〜71%）。
+    7MHz 実ノイズ 10 分の偽文字は 82.9 → 17.4 文字/分（CH32V003）、57.1 → 7.5 文字/分（CH32V006）
+  - ノイズブランカが下がりかけている途中に、トーン状のノイズが数ブロックずつ立って符号内の隙間を
+    埋め、短点 2 つが長点 1 本に融合する誤りを抑止（ESP32 版 cw_decoder4 v3.8 の対策を移植）。
+    下降の途中は、ON が深さと同じブロック数だけ続くまでカウンタを戻さない。雑音入りの Alice 音源の
+    正解率は 41.0 → 47.2%（003）、46.3 → 50.8%（006）
+  - 評価用のホストハーネス [tools/hosttest](tools/hosttest) を追加。デコーダ本体を Mac / PC で
+    そのまま動かし、実機の入力 HPF（318Hz）を掛けた録音で修正の前後を比べられる。上の数値はこれで
+    測ったもの（入力ピーク 50%）。Alice 原音・POTA QSO の正解率は変化なし。QRM 音源では本物の T が
+    1 つ落ちた
+  - いずれも変数どうしの乗除算を使っていない（逆アセンブルで確認済み。ライブラリ呼び出し・`mul` 命令
+    とも増えていない）。Flash は +124〜132 バイト（003 / ST7789 で 14204 / 16384 = 86.7%）
 
 ## 参考
 

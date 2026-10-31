@@ -58,8 +58,24 @@ static uint32_t lasthighduration;
 static uint32_t hightimesavg = 60;
 static uint32_t startttimelow;
 static uint32_t lowduration;
+// 符号内スペース長の推定 (ms)。マーク由来の hightimesavg とは別に持つ。
+// (ESP32版 cw_decoder4 v3.2 の対策を移植)
+//
+// キーイングの重み (マーク:スペース) は送り手によって 1:1 とは限らない。
+// 実測 (POTA QSO 録音): 短点 51ms / 長点 165ms に対し符号内スペースが 83ms
+// あり、短点の 1.63 倍だった (機械送出の音源はきっちり 1.00 倍)。
+// 長点/短点比は 3.24、語間も 6.8 短点で標準的なので、崩れているのは
+// 符号内スペースだけ。短点だけから単位長を出して「1.5 単位以上は文字間」と
+// 切ると、この音源の符号内スペース 83ms は 1.5 x 51 = 76ms を超えて全て
+// 文字間と判定され、1 文字が要素ごとにばらける (結果が E/T だらけになる)。
+// 符号内スペースそのものを測って、文字間との境界をそこから出す。
+static uint32_t lowtimesavg = 60;   // 起動時は hightimesavg と同じ (重み 1.0)
+// EMA 係数 1/4。1/3 にすると変数除算になるのでシフトで済む 1/4 を使う
+#define GAP_UNIT_EMA_SHIFT 2
 // ノイズブランカの積分値 (0..深さ)
 static uint8_t nb_acc = 0;
+// realstate が HIGH の連続ブロック数 (v2.3 の隙間保持で使う)
+static uint8_t nb_hi_run = 0;
 // 1ブロック = 48/8192Hz = 5.86ms。深さは 0.35 単位ぶんのブロック数 (四捨五入)
 // = unit[ms] x 0.35 / 5.86 ≒ unit x 6 / 100。上限 3 ブロック (17.6ms) は
 // 推定が遅い側へ外れても 50WPM の短点 (24ms) を残すための保険
@@ -71,6 +87,20 @@ static uint16_t stop = GPIO_LOW;
 static uint16_t wpm;
 static uint32_t last_mark_ms = 0;
 static uint32_t last_gap_ms = 0;
+// ノイズだけの区間で散発的に E/T が出るのを抑える (v2.3)。
+// (ESP32版 cw_decoder4 7494f8b の対策を移植)
+// 1 文字ごとの特徴では本物と区別できず、効くのは文脈だけ: 本物の CW にも
+// E/T は 19〜43% 含まれるのに対し、ノイズだけの区間では 69〜71% に達する。
+// そこで直近 ONE_WIN 文字のうち 1 要素の文字が ONE_THR 個以上を占める
+// あいだだけ、1 要素の文字を捨てる。抑止したものも履歴に数えるので、
+// ノイズが止まれば自然に復帰する。
+// ホストハーネス (tools/hosttest) の実測、003・入力ピーク 50%:
+//   7MHz 実ノイズ 10 分の偽文字 82.9 → 21.0 文字/分 (006 は 57.1 → 7.6)
+//   Alice / POTA の正解率、FS の文字数は不変。QRM 音源で本物の T が
+//   1 つ落ちた ("TEST" → "TES")
+static uint16_t one_hist = 0;   // 1 = 1 要素の文字 (新しいほど下位ビット)
+#define ONE_WIN 12
+#define ONE_THR 9
 
 static char		sw = MODE_US;
 static int16_t 	speed = 0;
@@ -160,12 +190,45 @@ typedef enum {
 	GAP_WORD  = 2  // 単語間
 } gap_type_t;
 
+// 符号内スペース推定を unit から離れすぎない範囲に収めて返す (ms)。
+// 暴走防止の拘束: 文字間ギャップを符号内と取り違えると推定が伸び、伸びた分
+// だけ次の文字間も飲み込む正帰還になる。0.75〜2.0 単位に限る (Farnsworth は
+// 文字間だけが伸びて符号内は 1 単位のままなので下限側に張り付く)。
+static uint32_t gap_unit(uint32_t unit)
+{
+	uint32_t gu = lowtimesavg;
+	uint32_t lo = (unit * 3) >> 2;      // 0.75 unit
+	uint32_t hi = unit << 1;            // 2.00 unit
+	if (gu < lo) gu = lo;
+	if (gu > hi) gu = hi;
+	return gu;
+}
+
+// 符号内/文字間の境界 (ms)。実測した符号内スペース長と、あるべき文字間
+// (3 単位) のちょうど中点に置く。
+//   理想 CW (重み 1.0) なら (1u + 3u)/2 = 2.0u … 1 と 3 の真ん中
+//   POTA 録音 (重み 1.63) なら (83 + 153)/2 = 118ms … 符号内 83 と
+//   文字間 170〜250 の間に十分な余裕をもって入る
+// 境界が 3 単位の文字間を飲み込むことは構造上ない: 推定が上限 2.0u まで
+// 振れても (2u + 3u)/2 = 2.5u にしかならない。3u に錨を降ろしているので、
+// 速度追従中に推定が古いままでも境界は暴れない。
+//
+// 変数どうしの乗除算を使っていないので、GCC がターゲットに応じて最適な形を
+// 選ぶ: CH32V003 (rv32ec、乗算も除算も無し) では unit * 3 が slli + add に、
+// CH32V006 (rv32ec_zmmul、乗算あり) では mul 命令になり、どちらも
+// __mulsi3 / __udivsi3 を呼ばない。比 (符号内 / 短点) で持つと比を測るのに
+// 変数どうしの除算が要り、006 でも __udivsi3 になるので長さ (ms) で持つ。
+static uint32_t gap_char_threshold(uint32_t unit)
+{
+	return (gap_unit(unit) + unit * 3) >> 1;
+}
+
 static gap_type_t classify_gap(uint32_t gap, uint32_t unit)
 {
 	if (unit == 0) return GAP_INTRA; // まだ学習前の保護
 
-	// gap < 1.5 * unit → 同一文字内
-	if (gap < (unit * 3) / 2) {
+	// 符号内スペースの実測に追従する境界 (旧: 固定の 1.5 * unit) → 同一文字内
+	if (gap < gap_char_threshold(unit)) {
 		return GAP_INTRA;
 	}
 	// 1.5〜4.5 * unit → 文字間
@@ -284,6 +347,8 @@ int cwd_setup()
 	noise_floor = 0;
 	noise_acc = 0;
 	nb_acc = 0;
+	nb_hi_run = 0;
+	one_hist = 0;
 	sampling_period_us = 900000 / GOERTZEL_SAMPLING_FREQUENCY;
 	reset_morse_buffers();
 	wpm = 0;
@@ -302,6 +367,18 @@ static int decodeAscii(int16_t asciinumber);
 static void decode_and_display(void)
 {
 	if (strlen(code) == 0) return;
+	{
+		// 1 要素の文字だけを数える。ループはシフトと加算だけ (乗除算なし)
+		uint8_t isone = (code[1] == '\0') ? 1 : 0;
+		one_hist = (uint16_t)((one_hist << 1) | isone);
+		uint16_t bits = one_hist & ((1u << ONE_WIN) - 1u);
+		uint8_t ones = 0;
+		for (; bits != 0; bits >>= 1) ones += (uint8_t)(bits & 1u);
+		if (isone && ones >= ONE_THR) {
+			code[0] = '\0';        // ノイズ主体の区間とみなして捨てる
+			return;
+		}
+	}
 	int16_t result = decode(code, &sw);
 	if (result == 0) {
 		cw_display_enqueue_char('*');
@@ -331,6 +408,12 @@ static int decodeAscii(int16_t asciinumber)
 	} else if (asciinumber == 7) {			// HH (訂正)
 		cw_display_enqueue_char('H');
 		cw_display_enqueue_char('H');
+	} else if (asciinumber == 8) {			// BK
+		cw_display_enqueue_char('B');
+		cw_display_enqueue_char('K');
+	} else if (asciinumber == 9) {			// UR
+		cw_display_enqueue_char('U');
+		cw_display_enqueue_char('R');
 	} else {
 		cw_display_enqueue_char(asciinumber);
 	}
@@ -450,8 +533,22 @@ int cwDecoder(void)
 			uint32_t n = (unit * 6 + 50) / 100;
 			if (n < NB_DEPTH_MIN) n = NB_DEPTH_MIN;
 			if (n > NB_DEPTH_MAX) n = NB_DEPTH_MAX;
+			// HIGH から下がりかけている途中は、ON が n ブロック続くまで
+			// カウンタを戻さない (v2.3、ESP32版 cw_decoder4 90ce9e0 の移植)。
+			// 符号内の隙間にトーン状のノイズが数ブロックずつ立つと、上下
+			// カウンタでは 0 まで下がりきる前に押し戻され、隙間が埋まって
+			// 短点 2 つが 1 本の長点になる (ESP32 実機入力で HAVING の I が T)。
+			// n ブロック続く ON は本物の再開とみなし、カウンタを満杯へ戻す。
+			// filteredstate が HIGH なのにカウンタが満杯でないのは下降途中だけ。
+			// ホストハーネスの実測 (003・ピーク 50%): Alice 雑音入り 41.0 →
+			// 47.2%、ESP32 実機入力で 5AVING → HAVING。他の音源はほぼ不変
+			nb_hi_run = (realstate == GPIO_HIGH) ? (uint8_t)(nb_hi_run + (nb_hi_run < 255)) : 0;
 			if (realstate == GPIO_HIGH) {
-				if (nb_acc < (uint8_t)n) nb_acc++;
+				if (filteredstate == GPIO_HIGH && nb_acc < (uint8_t)n) {
+					if (nb_hi_run >= (uint8_t)n) nb_acc = (uint8_t)n;
+				} else if (nb_acc < (uint8_t)n) {
+					nb_acc++;
+				}
 			} else if (nb_acc > 0) {
 				nb_acc--;
 			}
@@ -472,6 +569,19 @@ int cwDecoder(void)
 			if (filteredstate == GPIO_HIGH) {
 				starttimehigh = millis();
 				lowduration = (millis() - startttimelow);
+				// 符号内スペース推定の追従。符号内と判定できたギャップだけを
+				// 取り込む。動かす起点は拘束後の値 (gap_unit) にする: 生の
+				// lowtimesavg から動かすと、拘束の外に駐まったまま単位長の
+				// 変化に追いつけなくなる
+				if (lowduration >= 20 && hightimesavg > 0 &&
+				    lowduration < gap_char_threshold(hightimesavg)) {
+					uint32_t g = gap_unit(hightimesavg);
+					if (lowduration >= g) {
+						lowtimesavg = g + ((lowduration - g) >> GAP_UNIT_EMA_SHIFT);
+					} else {
+						lowtimesavg = g - ((g - lowduration) >> GAP_UNIT_EMA_SHIFT);
+					}
+				}
 				// ギャップ(1単位=文字内 / 3単位=文字間)も速度推定の情報源に
 				// する。マークと同数以上あるため収束が速くなる。語間(5単位
 				// 以上)は打鍵者の間合いに左右されるため使わない。
