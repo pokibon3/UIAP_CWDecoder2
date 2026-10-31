@@ -74,6 +74,8 @@ static uint32_t lowtimesavg = 60;   // 起動時は hightimesavg と同じ (重�
 #define GAP_UNIT_EMA_SHIFT 2
 // ノイズブランカの積分値 (0..深さ)
 static uint8_t nb_acc = 0;
+// realstate が HIGH の連続ブロック数 (v2.3 の隙間保持で使う)
+static uint8_t nb_hi_run = 0;
 // 1ブロック = 48/8192Hz = 5.86ms。深さは 0.35 単位ぶんのブロック数 (四捨五入)
 // = unit[ms] x 0.35 / 5.86 ≒ unit x 6 / 100。上限 3 ブロック (17.6ms) は
 // 推定が遅い側へ外れても 50WPM の短点 (24ms) を残すための保険
@@ -85,6 +87,20 @@ static uint16_t stop = GPIO_LOW;
 static uint16_t wpm;
 static uint32_t last_mark_ms = 0;
 static uint32_t last_gap_ms = 0;
+// ノイズだけの区間で散発的に E/T が出るのを抑える (v2.3)。
+// (ESP32版 cw_decoder4 7494f8b の対策を移植)
+// 1 文字ごとの特徴では本物と区別できず、効くのは文脈だけ: 本物の CW にも
+// E/T は 19〜43% 含まれるのに対し、ノイズだけの区間では 69〜71% に達する。
+// そこで直近 ONE_WIN 文字のうち 1 要素の文字が ONE_THR 個以上を占める
+// あいだだけ、1 要素の文字を捨てる。抑止したものも履歴に数えるので、
+// ノイズが止まれば自然に復帰する。
+// ホストハーネス (tools/hosttest) の実測、003・入力ピーク 50%:
+//   7MHz 実ノイズ 10 分の偽文字 82.9 → 21.0 文字/分 (006 は 57.1 → 7.6)
+//   Alice / POTA の正解率、FS の文字数は不変。QRM 音源で本物の T が
+//   1 つ落ちた ("TEST" → "TES")
+static uint16_t one_hist = 0;   // 1 = 1 要素の文字 (新しいほど下位ビット)
+#define ONE_WIN 12
+#define ONE_THR 9
 
 static char		sw = MODE_US;
 static int16_t 	speed = 0;
@@ -331,6 +347,8 @@ int cwd_setup()
 	noise_floor = 0;
 	noise_acc = 0;
 	nb_acc = 0;
+	nb_hi_run = 0;
+	one_hist = 0;
 	sampling_period_us = 900000 / GOERTZEL_SAMPLING_FREQUENCY;
 	reset_morse_buffers();
 	wpm = 0;
@@ -349,6 +367,18 @@ static int decodeAscii(int16_t asciinumber);
 static void decode_and_display(void)
 {
 	if (strlen(code) == 0) return;
+	{
+		// 1 要素の文字だけを数える。ループはシフトと加算だけ (乗除算なし)
+		uint8_t isone = (code[1] == '\0') ? 1 : 0;
+		one_hist = (uint16_t)((one_hist << 1) | isone);
+		uint16_t bits = one_hist & ((1u << ONE_WIN) - 1u);
+		uint8_t ones = 0;
+		for (; bits != 0; bits >>= 1) ones += (uint8_t)(bits & 1u);
+		if (isone && ones >= ONE_THR) {
+			code[0] = '\0';        // ノイズ主体の区間とみなして捨てる
+			return;
+		}
+	}
 	int16_t result = decode(code, &sw);
 	if (result == 0) {
 		cw_display_enqueue_char('*');
@@ -503,8 +533,22 @@ int cwDecoder(void)
 			uint32_t n = (unit * 6 + 50) / 100;
 			if (n < NB_DEPTH_MIN) n = NB_DEPTH_MIN;
 			if (n > NB_DEPTH_MAX) n = NB_DEPTH_MAX;
+			// HIGH から下がりかけている途中は、ON が n ブロック続くまで
+			// カウンタを戻さない (v2.3、ESP32版 cw_decoder4 90ce9e0 の移植)。
+			// 符号内の隙間にトーン状のノイズが数ブロックずつ立つと、上下
+			// カウンタでは 0 まで下がりきる前に押し戻され、隙間が埋まって
+			// 短点 2 つが 1 本の長点になる (ESP32 実機入力で HAVING の I が T)。
+			// n ブロック続く ON は本物の再開とみなし、カウンタを満杯へ戻す。
+			// filteredstate が HIGH なのにカウンタが満杯でないのは下降途中だけ。
+			// ホストハーネスの実測 (003・ピーク 50%): Alice 雑音入り 41.0 →
+			// 47.2%、ESP32 実機入力で 5AVING → HAVING。他の音源はほぼ不変
+			nb_hi_run = (realstate == GPIO_HIGH) ? (uint8_t)(nb_hi_run + (nb_hi_run < 255)) : 0;
 			if (realstate == GPIO_HIGH) {
-				if (nb_acc < (uint8_t)n) nb_acc++;
+				if (filteredstate == GPIO_HIGH && nb_acc < (uint8_t)n) {
+					if (nb_hi_run >= (uint8_t)n) nb_acc = (uint8_t)n;
+				} else if (nb_acc < (uint8_t)n) {
+					nb_acc++;
+				}
 			} else if (nb_acc > 0) {
 				nb_acc--;
 			}

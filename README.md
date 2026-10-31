@@ -76,18 +76,18 @@ VS Code でこのフォルダを開き、PlatformIO IDE の機能を使ってビ
 - CH32V006 / ST7735: [tools/006/ST7735](tools/006/ST7735)
 - CH32V006 / ST7789: [tools/006/ST7789](tools/006/ST7789)
 
-今回の `v2.2` は、符号内スペースが短点より長い送信（手送りなどで重みが軽い CW）を正しく 1 文字にまとめられるようにした版です。
+今回の `v2.3` は、信号の無いノイズだけの区間で E / T が散発的に出るのを抑え（7MHz のバンドノイズで偽文字が約 5 分の 1）、雑音の中で短点 2 つが長点 1 本に化ける誤りを減らした版です。
 
-- CH32V003 / ST7735 `v2.2` macOS: [tools/003/ST7735/mac/firmwareUpdate2.2](tools/003/ST7735/mac/firmwareUpdate2.2)
-- CH32V003 / ST7735 `v2.2` Windows: [tools/003/ST7735/win/firmwareUpdate2.2](tools/003/ST7735/win/firmwareUpdate2.2)
-- CH32V003 / ST7789 `v2.2` macOS: [tools/003/ST7789/mac/firmwareUpdate2.2](tools/003/ST7789/mac/firmwareUpdate2.2)
-- CH32V003 / ST7789 `v2.2` Windows: [tools/003/ST7789/win/firmwareUpdate2.2](tools/003/ST7789/win/firmwareUpdate2.2)
-- CH32V006 / ST7735 `v2.2` macOS: [tools/006/ST7735/mac/firmwareUpdate2.2](tools/006/ST7735/mac/firmwareUpdate2.2)
-- CH32V006 / ST7735 `v2.2` Windows: [tools/006/ST7735/win/firmwareUpdate2.2](tools/006/ST7735/win/firmwareUpdate2.2)
-- CH32V006 / ST7789 `v2.2` macOS: [tools/006/ST7789/mac/firmwareUpdate2.2](tools/006/ST7789/mac/firmwareUpdate2.2)
-- CH32V006 / ST7789 `v2.2` Windows: [tools/006/ST7789/win/firmwareUpdate2.2](tools/006/ST7789/win/firmwareUpdate2.2)
+- CH32V003 / ST7735 `v2.3` macOS: [tools/003/ST7735/mac/firmwareUpdate2.3](tools/003/ST7735/mac/firmwareUpdate2.3)
+- CH32V003 / ST7735 `v2.3` Windows: [tools/003/ST7735/win/firmwareUpdate2.3](tools/003/ST7735/win/firmwareUpdate2.3)
+- CH32V003 / ST7789 `v2.3` macOS: [tools/003/ST7789/mac/firmwareUpdate2.3](tools/003/ST7789/mac/firmwareUpdate2.3)
+- CH32V003 / ST7789 `v2.3` Windows: [tools/003/ST7789/win/firmwareUpdate2.3](tools/003/ST7789/win/firmwareUpdate2.3)
+- CH32V006 / ST7735 `v2.3` macOS: [tools/006/ST7735/mac/firmwareUpdate2.3](tools/006/ST7735/mac/firmwareUpdate2.3)
+- CH32V006 / ST7735 `v2.3` Windows: [tools/006/ST7735/win/firmwareUpdate2.3](tools/006/ST7735/win/firmwareUpdate2.3)
+- CH32V006 / ST7789 `v2.3` macOS: [tools/006/ST7789/mac/firmwareUpdate2.3](tools/006/ST7789/mac/firmwareUpdate2.3)
+- CH32V006 / ST7789 `v2.3` Windows: [tools/006/ST7789/win/firmwareUpdate2.3](tools/006/ST7789/win/firmwareUpdate2.3)
 
-`v2.0` 以前のパッケージも各ディレクトリの `firmwareUpdate2.0` などに残しています。
+`v2.2` 以前のパッケージも各ディレクトリの `firmwareUpdate2.2` などに残しています。
 
 ## 変更履歴
 
@@ -160,6 +160,22 @@ VS Code でこのフォルダを開き、PlatformIO IDE の機能を使ってビ
     `__mulsi3` / `__udivsi3` を新たに呼ばない（逆アセンブルで確認済み。Flash は +156 バイト）
   - 略号 `UR`（`..-.-.`）を追加。`UR 5NN` のように RST の前へ続けて送られる
   - 略号 `BK` が制御文字（0x08）として表示に流れていた問題を修正。`BK` と出す
+- V2.3
+  - ノイズだけを受信しているときに E / T が散発的に出るのを抑止。直近 12 文字のうち 1 要素の
+    文字が 9 個以上を占めるあいだ、1 要素の文字を捨てる。抑止した分も履歴に数えるので、ノイズが
+    止まれば自然に復帰する（ESP32 版 cw_decoder4 の対策を移植）。1 文字ごとの特徴では本物と
+    区別できず、効くのは文脈だけ（本物の CW の E / T は 19〜43%、ノイズだけの区間では 69〜71%）。
+    7MHz 実ノイズ 10 分の偽文字は 82.9 → 17.4 文字/分（CH32V003）、57.1 → 7.5 文字/分（CH32V006）
+  - ノイズブランカが下がりかけている途中に、トーン状のノイズが数ブロックずつ立って符号内の隙間を
+    埋め、短点 2 つが長点 1 本に融合する誤りを抑止（ESP32 版 cw_decoder4 v3.8 の対策を移植）。
+    下降の途中は、ON が深さと同じブロック数だけ続くまでカウンタを戻さない。雑音入りの Alice 音源の
+    正解率は 41.0 → 47.2%（003）、46.3 → 50.8%（006）
+  - 評価用のホストハーネス [tools/hosttest](tools/hosttest) を追加。デコーダ本体を Mac / PC で
+    そのまま動かし、実機の入力 HPF（318Hz）を掛けた録音で修正の前後を比べられる。上の数値はこれで
+    測ったもの（入力ピーク 50%）。Alice 原音・POTA QSO の正解率は変化なし。QRM 音源では本物の T が
+    1 つ落ちた
+  - いずれも変数どうしの乗除算を使っていない（逆アセンブルで確認済み。ライブラリ呼び出し・`mul` 命令
+    とも増えていない）。Flash は +124〜132 バイト（003 / ST7789 で 14204 / 16384 = 86.7%）
 
 ## 参考
 
